@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Outbreak Watch Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #f4f1e8;
+        --panel: rgba(255, 255, 255, 0.8);
+        --panel-strong: rgba(255, 255, 255, 0.92);
+        --ink: #11211d;
+        --muted: #5c6e66;
+        --line: rgba(17, 33, 29, 0.12);
+        --accent: #1f6f5d;
+        --accent-soft: rgba(31, 111, 93, 0.12);
+        --warn: #cf4b30;
+        --warn-soft: rgba(207, 75, 48, 0.12);
+        --amber: #b48b3d;
+        --amber-soft: rgba(180, 139, 61, 0.14);
+        --shadow: 0 18px 50px rgba(22, 35, 31, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background:
+          radial-gradient(circle at top left, rgba(31, 111, 93, 0.18), transparent 28%),
+          radial-gradient(circle at 85% 12%, rgba(180, 139, 61, 0.18), transparent 24%),
+          linear-gradient(180deg, #fbf8f1 0%, #f1ece2 52%, #ece5d9 100%);
+        color: var(--ink);
+        font-family: "IBM Plex Sans", sans-serif;
+      }
+
+      body {
+        padding: 24px;
+        overflow-x: hidden;
+      }
+
+      .shell {
+        max-width: 1520px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: minmax(250px, 272px) minmax(0, 1fr);
+        gap: 20px;
+        align-items: start;
+      }
+
+      .panel {
+        background: var(--panel);
+        backdrop-filter: blur(18px);
+        border: 1px solid var(--line);
+        border-radius: 26px;
+        box-shadow: var(--shadow);
+      }
+
+      .sidebar {
+        padding: 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        position: sticky;
+        top: 24px;
+        height: fit-content;
+      }
+
+      .brand {
+        display: grid;
+        gap: 10px;
+      }
+
+      .eyebrow,
+      .kicker {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        width: fit-content;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(31, 111, 93, 0.16);
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      .serif {
+        margin: 0;
+        font-family: "IBM Plex Serif", serif;
+      }
+
+      h1 {
+        font-size: 32px;
+        line-height: 1.05;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .side-block {
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+      }
+
+      .side-title {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .legend,
+      .sources,
+      .digest-list {
+        display: grid;
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .legend-row,
+      .source-row,
+      .digest-item {
+        display: grid;
+        gap: 6px;
+      }
+
+      .legend-key {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+      }
+
+      .dot-critical {
+        background: var(--warn);
+      }
+
+      .dot-high {
+        background: #d4701a;
+      }
+
+      .dot-medium {
+        background: var(--amber);
+      }
+
+      .dot-low {
+        background: var(--accent);
+      }
+
+      .main {
+        display: grid;
+        gap: 20px;
+        min-width: 0;
+      }
+
+      .hero {
+        padding: 24px;
+        display: grid;
+        gap: 20px;
+      }
+
+      .hero-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: flex-start;
+      }
+
+      .hero-copy {
+        max-width: 740px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .hero-copy h2 {
+        font-size: 48px;
+        line-height: 0.98;
+      }
+
+      .hero-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .button {
+        appearance: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 18px;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .button-primary {
+        background: var(--ink);
+        color: #fff;
+      }
+
+      .button-secondary {
+        background: rgba(255, 255, 255, 0.85);
+        color: var(--ink);
+        border: 1px solid var(--line);
+      }
+
+      .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .lead-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+        gap: 14px;
+      }
+
+      .lead-card {
+        padding: 18px;
+        border-radius: 20px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.82);
+        display: grid;
+        gap: 12px;
+      }
+
+      .lead-title {
+        font-size: 26px;
+        line-height: 1.05;
+      }
+
+      .lead-points {
+        display: grid;
+        gap: 10px;
+      }
+
+      .lead-point {
+        display: grid;
+        grid-template-columns: 26px minmax(0, 1fr);
+        gap: 10px;
+        align-items: start;
+      }
+
+      .lead-step {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .stat-card {
+        padding: 18px;
+        border-radius: 20px;
+        background: var(--panel-strong);
+        border: 1px solid var(--line);
+        display: grid;
+        gap: 8px;
+      }
+
+      .stat-label {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .stat-value {
+        font-size: 32px;
+        line-height: 1;
+        font-weight: 700;
+      }
+
+      .stat-note {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .workbench {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(360px, 0.75fr);
+        gap: 20px;
+      }
+
+      .section-card {
+        padding: 22px;
+        display: grid;
+        gap: 18px;
+      }
+
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: flex-start;
+      }
+
+      .section-head h3 {
+        font-size: 28px;
+      }
+
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .chip {
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.82);
+        color: var(--muted);
+        padding: 10px 14px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .chip.is-active {
+        background: var(--ink);
+        color: #fff;
+        border-color: var(--ink);
+      }
+
+      .signal-list {
+        display: grid;
+        gap: 14px;
+      }
+
+      .signal-card {
+        padding: 18px;
+        border-radius: 20px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.76);
+        display: grid;
+        gap: 14px;
+      }
+
+      .signal-card.critical {
+        background: linear-gradient(135deg, rgba(207, 75, 48, 0.12), rgba(255, 255, 255, 0.9));
+      }
+
+      .signal-card.high {
+        background: linear-gradient(135deg, rgba(212, 112, 26, 0.11), rgba(255, 255, 255, 0.9));
+      }
+
+      .signal-top,
+      .signal-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: flex-start;
+      }
+
+      .signal-title {
+        font-size: 22px;
+        line-height: 1.1;
+      }
+
+      .badges {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .badge {
+        padding: 7px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .badge-critical {
+        background: var(--warn-soft);
+        color: var(--warn);
+      }
+
+      .badge-high {
+        background: rgba(212, 112, 26, 0.12);
+        color: #b15a0b;
+      }
+
+      .badge-medium {
+        background: var(--amber-soft);
+        color: #8d6a21;
+      }
+
+      .badge-low {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+
+      .badge-source,
+      .badge-novelty {
+        background: rgba(17, 33, 29, 0.08);
+        color: var(--ink);
+      }
+
+      .meta-inline {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        font-size: 14px;
+        color: var(--muted);
+      }
+
+      .insight-grid {
+        display: grid;
+        gap: 20px;
+      }
+
+      .map-card,
+      .rank-card,
+      .alert-card {
+        padding: 18px;
+        border-radius: 20px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.78);
+      }
+
+      .map-shell {
+        margin-top: 14px;
+        height: 264px;
+        position: relative;
+        overflow: hidden;
+        border-radius: 18px;
+        background:
+          radial-gradient(circle at 16% 38%, rgba(31, 111, 93, 0.15) 0 11%, transparent 12%),
+          radial-gradient(circle at 39% 29%, rgba(31, 111, 93, 0.16) 0 14%, transparent 15%),
+          radial-gradient(circle at 69% 34%, rgba(31, 111, 93, 0.16) 0 15%, transparent 16%),
+          radial-gradient(circle at 82% 64%, rgba(31, 111, 93, 0.18) 0 10%, transparent 11%),
+          linear-gradient(180deg, rgba(31, 111, 93, 0.08), rgba(17, 33, 29, 0.02));
+        border: 1px solid rgba(17, 33, 29, 0.08);
+      }
+
+      .map-grid {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(17, 33, 29, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(17, 33, 29, 0.05) 1px, transparent 1px);
+        background-size: 44px 44px;
+      }
+
+      .pin {
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.88);
+        box-shadow: 0 0 0 10px rgba(17, 33, 29, 0.04);
+        transform: translate(-50%, -50%);
+      }
+
+      .pin.critical {
+        background: var(--warn);
+      }
+
+      .pin.high {
+        background: #d4701a;
+      }
+
+      .pin.medium {
+        background: var(--amber);
+      }
+
+      .pin.low {
+        background: var(--accent);
+      }
+
+      .map-label {
+        position: absolute;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: rgba(17, 33, 29, 0.48);
+      }
+
+      .rank-list,
+      .alert-list {
+        display: grid;
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .rank-row,
+      .alert-row {
+        display: grid;
+        gap: 6px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .rank-row:last-child,
+      .alert-row:last-child {
+        padding-bottom: 0;
+        border-bottom: 0;
+      }
+
+      .mini-bar {
+        height: 9px;
+        border-radius: 999px;
+        background: rgba(17, 33, 29, 0.08);
+        overflow: hidden;
+      }
+
+      .mini-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--accent), #2e9f82);
+      }
+
+      .empty-state {
+        padding: 20px;
+        border-radius: 18px;
+        border: 1px dashed rgba(17, 33, 29, 0.18);
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.56);
+      }
+
+      @media (max-width: 1200px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          position: static;
+          order: 2;
+        }
+
+        .main {
+          order: 1;
+        }
+
+        .workbench {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 860px) {
+        body {
+          padding: 14px;
+        }
+
+        .hero-copy h2 {
+          font-size: 36px;
+        }
+
+        .lead-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .stat-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .hero-top,
+        .section-head,
+        .signal-top,
+        .signal-meta {
+          flex-direction: column;
+        }
+
+        .hero-actions {
+          width: 100%;
+        }
+
+        .hero-actions .button {
+          flex: 1 1 180px;
+        }
+
+        .side-block.optional {
+          display: none;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .stat-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar panel">
+        <div class="brand">
+          <span class="eyebrow">Demo data / review mode</span>
+          <h1>Outbreak Watch</h1>
+          <p class="muted">
+            Demo dashboard for the AI x Bio hackathon. It puts disease alerts and
+            research updates in one place.
+          </p>
+        </div>
+
+        <div class="side-block">
+          <div class="side-title">Risk levels</div>
+          <div class="legend">
+            <div class="legend-row">
+              <div class="legend-key"><span class="dot dot-critical"></span>Urgent</div>
+              <p class="muted">Needs attention now.</p>
+            </div>
+            <div class="legend-row">
+              <div class="legend-key"><span class="dot dot-high"></span>High</div>
+              <p class="muted">Important. Check today.</p>
+            </div>
+            <div class="legend-row">
+              <div class="legend-key"><span class="dot dot-medium"></span>Medium</div>
+              <p class="muted">Keep watching.</p>
+            </div>
+            <div class="legend-row">
+              <div class="legend-key"><span class="dot dot-low"></span>Low</div>
+              <p class="muted">Background signal.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="side-block optional">
+          <div class="side-title">Source mix</div>
+          <div id="source-summary" class="sources"></div>
+        </div>
+
+        <div class="side-block optional">
+          <div class="side-title">Quick update</div>
+          <div id="digest-list" class="digest-list"></div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <section class="hero panel">
+          <div class="hero-top">
+            <div class="hero-copy">
+              <span class="kicker">April 24, 2026 / demo</span>
+              <h2>See today's biggest outbreak warnings fast.</h2>
+              <p class="muted">
+                One screen for disease alerts, new research, and where they are showing
+                up. Fake data below, built to show the flow clearly.
+              </p>
+            </div>
+            <div class="hero-actions">
+              <button id="focus-top-btn" class="button button-primary" type="button">See top alert</button>
+              <button id="focus-map-btn" class="button button-secondary" type="button">Open map</button>
+            </div>
+          </div>
+
+          <div id="stat-grid" class="stat-grid"></div>
+
+          <div class="lead-grid">
+            <article class="lead-card">
+              <p class="side-title">Start here</p>
+              <h3 class="lead-title serif">What needs attention first?</h3>
+              <p id="lead-summary" class="muted"></p>
+              <div id="lead-meta" class="meta-inline"></div>
+            </article>
+
+            <article class="lead-card">
+              <p class="side-title">How to use it</p>
+              <div class="lead-points">
+                <div class="lead-point">
+                  <span class="lead-step">1</span>
+                  <p><strong>Open the first card.</strong> It should show the biggest risk right now.</p>
+                </div>
+                <div class="lead-point">
+                  <span class="lead-step">2</span>
+                  <p><strong>Check place and size.</strong> See where it is, how many cases, and how new it is.</p>
+                </div>
+                <div class="lead-point">
+                  <span class="lead-step">3</span>
+                  <p><strong>Share the short update.</strong> Use the map and next-step list to explain what matters.</p>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="workbench">
+          <div class="section-card panel">
+            <div class="section-head">
+              <div>
+                <p class="side-title">Main feed</p>
+                <h3>Top alerts</h3>
+              </div>
+              <p class="muted">Sort: risk, how new it is, source, time</p>
+            </div>
+
+            <div class="chip-row" id="severity-filters"></div>
+            <div class="chip-row" id="source-filters"></div>
+            <div id="signal-list" class="signal-list"></div>
+          </div>
+
+          <div class="insight-grid">
+            <section class="map-card panel">
+              <div class="section-head">
+                <div>
+                  <p class="side-title">Map</p>
+                  <h3>Where alerts are showing up</h3>
+                </div>
+                <p class="muted">Fake locations for demo only</p>
+              </div>
+              <div class="map-shell">
+                <div class="map-grid"></div>
+                <div class="map-label" style="left: 10%; top: 18%;">North America</div>
+                <div class="map-label" style="left: 35%; top: 12%;">Europe</div>
+                <div class="map-label" style="left: 62%; top: 19%;">Asia</div>
+                <div class="map-label" style="left: 77%; top: 65%;">Oceania</div>
+                <div class="map-label" style="left: 36%; top: 66%;">Africa</div>
+                <div id="map-pins"></div>
+              </div>
+            </section>
+
+            <section class="rank-card panel">
+              <div class="section-head">
+                <div>
+                  <p class="side-title">Top topics</p>
+                  <h3>Most seen items</h3>
+                </div>
+              </div>
+              <div id="rank-list" class="rank-list"></div>
+            </section>
+
+            <section class="alert-card panel">
+              <div class="section-head">
+                <div>
+                  <p class="side-title">Next steps</p>
+                  <h3>What to do next</h3>
+                </div>
+              </div>
+              <div id="alert-list" class="alert-list"></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const signals = [
+        {
+          id: "sig-101",
+          pathogen: "New virus-like cluster",
+          source: "PROMED",
+          severity: "CRITICAL",
+          novelty: "NOVEL",
+          credibility: "PRIMARY",
+          region: "Southeast Asia",
+          location: "Johor, Malaysia",
+          cases: 7,
+          deaths: 0,
+          hoursAgo: 2,
+          summary:
+            "A small breathing-illness cluster appeared near animal exposure sites. It is new enough to review right away.",
+          x: 70,
+          y: 57
+        },
+        {
+          id: "sig-102",
+          pathogen: "Bird flu worker exposure",
+          source: "WHO",
+          severity: "HIGH",
+          novelty: "KNOWN",
+          credibility: "PRIMARY",
+          region: "Southeast Asia",
+          location: "West Java, Indonesia",
+          cases: 4,
+          deaths: 0,
+          hoursAgo: 6,
+          summary:
+            "Several poultry workers were exposed, and one home contact is being watched. Multiple sources mention it.",
+          x: 73,
+          y: 60
+        },
+        {
+          id: "sig-103",
+          pathogen: "Polio signal in wastewater",
+          source: "NEWS",
+          severity: "MEDIUM",
+          novelty: "KNOWN",
+          credibility: "SECONDARY",
+          region: "North Africa",
+          location: "Cairo, Egypt",
+          cases: 0,
+          deaths: 0,
+          hoursAgo: 9,
+          summary:
+            "Polio showed up in wastewater, even though no linked patient cases are confirmed yet. It may be spreading quietly.",
+          x: 47,
+          y: 53
+        },
+        {
+          id: "sig-104",
+          pathogen: "Mpox preprint with unusual changes",
+          source: "BIORXIV",
+          severity: "HIGH",
+          novelty: "VARIANT",
+          credibility: "UNVERIFIED",
+          region: "Central Africa",
+          location: "Kinshasa, DRC",
+          cases: 0,
+          deaths: 0,
+          hoursAgo: 11,
+          summary:
+            "A new research draft suggests changes that may matter. It is not reviewed yet, but it could be important.",
+          x: 42,
+          y: 62
+        },
+        {
+          id: "sig-105",
+          pathogen: "Enterovirus hospital outbreak",
+          source: "ECDC",
+          severity: "MEDIUM",
+          novelty: "KNOWN",
+          credibility: "PRIMARY",
+          region: "Europe",
+          location: "Bucharest, Romania",
+          cases: 19,
+          deaths: 1,
+          hoursAgo: 15,
+          summary:
+            "A hospital cluster in children is growing, and some cases reached intensive care. The trend is moving up.",
+          x: 43,
+          y: 34
+        },
+        {
+          id: "sig-106",
+          pathogen: "Animal virus study alert",
+          source: "BIORXIV",
+          severity: "LOW",
+          novelty: "NOVEL",
+          credibility: "UNVERIFIED",
+          region: "Oceania",
+          location: "Brisbane, Australia",
+          cases: 0,
+          deaths: 0,
+          hoursAgo: 19,
+          summary:
+            "A research draft found a new virus family in animals. It is not urgent today, but worth watching.",
+          x: 82,
+          y: 75
+        },
+        {
+          id: "sig-107",
+          pathogen: "Cholera spread risk",
+          source: "PROMED",
+          severity: "HIGH",
+          novelty: "KNOWN",
+          credibility: "PRIMARY",
+          region: "East Africa",
+          location: "Kampala, Uganda",
+          cases: 43,
+          deaths: 3,
+          hoursAgo: 22,
+          summary:
+            "Water system trouble and rising case counts could help cholera spread faster. This needs close watching.",
+          x: 47,
+          y: 60
+        },
+        {
+          id: "sig-108",
+          pathogen: "MERS travel alert",
+          source: "WHO",
+          severity: "LOW",
+          novelty: "KNOWN",
+          credibility: "PRIMARY",
+          region: "Middle East",
+          location: "Riyadh, Saudi Arabia",
+          cases: 2,
+          deaths: 0,
+          hoursAgo: 28,
+          summary:
+            "A travel alert mentions a small number of MERS cases. Low priority now, but still useful to track.",
+          x: 56,
+          y: 44
+        }
+      ];
+
+      const actionQueue = [
+        "Review the Johor cluster first and prepare a short team update.",
+        "Add the bird flu exposure chain to today's Southeast Asia summary.",
+        "Keep the mpox research draft on watch until more sources confirm it.",
+        "Compare the cholera signal with other regional water-system alerts."
+      ];
+
+      const state = {
+        severity: "ALL",
+        source: "ALL"
+      };
+
+      const severityOrder = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
+      const severityWeight = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+      const severityLabels = { ALL: "All", CRITICAL: "Urgent", HIGH: "High", MEDIUM: "Medium", LOW: "Low" };
+      const sourceLabels = { ALL: "All", PROMED: "Alert feed", WHO: "WHO", NEWS: "News", BIORXIV: "Research", ECDC: "Europe CDC" };
+      const noveltyLabels = { KNOWN: "Known", VARIANT: "Changed", NOVEL: "New" };
+      const credibilityLabels = { PRIMARY: "Official", SECONDARY: "Reported", UNVERIFIED: "Unchecked" };
+
+      function fmtSeverity(severity) {
+        return severity.toLowerCase();
+      }
+
+      function renderFilterRow(targetId, values, selected, key) {
+        const target = document.getElementById(targetId);
+        target.innerHTML = "";
+
+        values.forEach((value) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = `chip ${selected === value ? "is-active" : ""}`;
+          if (key === "severity") button.textContent = severityLabels[value] || value;
+          if (key === "source") button.textContent = sourceLabels[value] || value;
+          button.addEventListener("click", () => {
+            state[key] = value;
+            renderAll();
+          });
+          target.appendChild(button);
+        });
+      }
+
+      function getFilteredSignals() {
+        return signals
+          .filter((signal) => state.severity === "ALL" || signal.severity === state.severity)
+          .filter((signal) => state.source === "ALL" || signal.source === state.source)
+          .sort((a, b) => {
+            const severityDelta = severityWeight[b.severity] - severityWeight[a.severity];
+            if (severityDelta !== 0) return severityDelta;
+            return a.hoursAgo - b.hoursAgo;
+          });
+      }
+
+      function renderStats(filtered) {
+        const statGrid = document.getElementById("stat-grid");
+        const criticalCount = filtered.filter((item) => item.severity === "CRITICAL").length;
+        const novelCount = filtered.filter((item) => item.novelty === "NOVEL").length;
+        const primaryCount = filtered.filter((item) => item.credibility === "PRIMARY").length;
+        const cases = filtered.reduce((sum, item) => sum + item.cases, 0);
+
+        const stats = [
+          {
+            label: "Items on screen",
+            value: filtered.length,
+            note: "Current filtered view"
+          },
+          {
+            label: "Urgent items",
+            value: criticalCount,
+            note: "Needs attention now"
+          },
+          {
+            label: "New items",
+            value: novelCount,
+            note: "New or unusual"
+          },
+          {
+            label: "Known cases",
+            value: cases,
+            note: `${primaryCount} official-source items`
+          }
+        ];
+
+        statGrid.innerHTML = stats
+          .map(
+            (stat) => `
+              <div class="stat-card">
+                <div class="stat-label">${stat.label}</div>
+                <div class="stat-value">${stat.value}</div>
+                <div class="stat-note">${stat.note}</div>
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      function renderSignals(filtered) {
+        const list = document.getElementById("signal-list");
+
+        if (!filtered.length) {
+          list.innerHTML = `<div class="empty-state">No signals match the current filters.</div>`;
+          return;
+        }
+
+        list.innerHTML = filtered
+          .map(
+            (signal) => `
+              <article class="signal-card ${fmtSeverity(signal.severity)}">
+                <div class="signal-top">
+                  <div>
+                    <div class="signal-title serif">${signal.pathogen}</div>
+                    <p class="muted">${signal.summary}</p>
+                  </div>
+                  <div class="badges">
+                    <span class="badge badge-${fmtSeverity(signal.severity)}">${severityLabels[signal.severity]}</span>
+                    <span class="badge badge-source">${sourceLabels[signal.source]}</span>
+                    <span class="badge badge-novelty">${noveltyLabels[signal.novelty]}</span>
+                  </div>
+                </div>
+                <div class="signal-meta">
+                  <div class="meta-inline">
+                    <span>${signal.location}</span>
+                    <span>${signal.region}</span>
+                    <span>${signal.hoursAgo}h ago</span>
+                  </div>
+                  <div class="meta-inline">
+                    <span>Cases ${signal.cases}</span>
+                    <span>Deaths ${signal.deaths}</span>
+                    <span>${credibilityLabels[signal.credibility]}</span>
+                  </div>
+                </div>
+              </article>
+            `
+          )
+          .join("");
+      }
+
+      function renderLead(filtered) {
+        const lead = filtered[0];
+
+        if (!lead) {
+          document.getElementById("lead-summary").textContent = "No alerts match these filters right now.";
+          document.getElementById("lead-meta").innerHTML = "";
+          return;
+        }
+
+        document.getElementById("lead-summary").innerHTML = `
+          <strong>${lead.pathogen}</strong> is the top item right now because it is
+          ${severityLabels[lead.severity].toLowerCase()}, ${noveltyLabels[lead.novelty].toLowerCase()},
+          and recent.
+        `;
+        document.getElementById("lead-meta").innerHTML = `
+          <span>${lead.location}</span>
+          <span>${lead.hoursAgo}h ago</span>
+          <span>${lead.cases} known cases</span>
+          <span>${credibilityLabels[lead.credibility]}</span>
+        `;
+      }
+
+      function renderMap(filtered) {
+        const mapPins = document.getElementById("map-pins");
+        mapPins.innerHTML = filtered
+          .map(
+            (signal) => `
+              <span
+                class="pin ${fmtSeverity(signal.severity)}"
+                style="left: ${signal.x}%; top: ${signal.y}%;"
+                title="${signal.pathogen} - ${signal.location}"
+              ></span>
+            `
+          )
+          .join("");
+      }
+
+      function renderRankings(filtered) {
+        const bucket = new Map();
+
+        filtered.forEach((signal) => {
+          const current = bucket.get(signal.pathogen) || { count: 0, score: 0 };
+          current.count += 1;
+          current.score += severityWeight[signal.severity];
+          bucket.set(signal.pathogen, current);
+        });
+
+        const rows = [...bucket.entries()]
+          .sort((a, b) => b[1].score - a[1].score)
+          .slice(0, 5);
+
+        const total = rows.length ? rows[0][1].score : 1;
+
+        document.getElementById("rank-list").innerHTML = rows
+          .map(
+            ([name, stats]) => `
+              <div class="rank-row">
+                <div style="display:flex; justify-content:space-between; gap:12px;">
+                  <strong>${name}</strong>
+                  <span class="muted">${stats.count} signal${stats.count > 1 ? "s" : ""}</span>
+                </div>
+                <div class="mini-bar">
+                  <div class="mini-fill" style="width:${(stats.score / total) * 100}%"></div>
+                </div>
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      function renderSources() {
+        const bucket = new Map();
+        signals.forEach((signal) => {
+          bucket.set(signal.source, (bucket.get(signal.source) || 0) + 1);
+        });
+
+        document.getElementById("source-summary").innerHTML = [...bucket.entries()]
+          .map(
+            ([source, count]) => `
+              <div class="source-row">
+                <div style="display:flex; justify-content:space-between; gap:12px;">
+                  <strong>${sourceLabels[source] || source}</strong>
+                  <span class="muted">${count}</span>
+                </div>
+                <div class="mini-bar">
+                  <div class="mini-fill" style="width:${(count / signals.length) * 100}%"></div>
+                </div>
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      function renderDigest(filtered) {
+        document.getElementById("digest-list").innerHTML = filtered
+          .slice(0, 3)
+          .map(
+            (signal) => `
+              <div class="digest-item">
+                <strong>${signal.pathogen}</strong>
+                <p class="muted">${signal.location}</p>
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      function renderActionQueue() {
+        document.getElementById("alert-list").innerHTML = actionQueue
+          .map(
+            (item) => `
+              <div class="alert-row">
+                <strong>${item}</strong>
+                <p class="muted">Demo note. Could become a task or auto-alert.</p>
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      function renderAll() {
+        const filtered = getFilteredSignals();
+        renderFilterRow("severity-filters", ["ALL", ...severityOrder], state.severity, "severity");
+        renderFilterRow(
+          "source-filters",
+          ["ALL", ...new Set(signals.map((signal) => signal.source))],
+          state.source,
+          "source"
+        );
+        renderStats(filtered);
+        renderLead(filtered);
+        renderSignals(filtered);
+        renderMap(filtered);
+        renderRankings(filtered);
+        renderDigest(filtered);
+        renderSources();
+        renderActionQueue();
+      }
+
+      renderAll();
+
+      document.getElementById("focus-top-btn").addEventListener("click", () => {
+        document.getElementById("signal-list").scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+
+      document.getElementById("focus-map-btn").addEventListener("click", () => {
+        document.querySelector(".map-card").scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    </script>
+  </body>
+</html>
