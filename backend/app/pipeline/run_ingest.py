@@ -3,9 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+import httpx
 from sqlalchemy.orm import Session
 
-from app.ingest.promed import ingest_promed_rss
+from app.ingest.errors import SourceIngestError
+from app.ingest.promed import ingest_promed_api
 from app.ingest.who import ingest_who_odata
 from app.models import PipelineRun
 from app.settings import Settings
@@ -17,6 +19,7 @@ class SourceRunResult:
     records_in: int
     records_ok: int
     records_failed: int
+    records_skipped: int
     error: str | None = None
 
 
@@ -27,7 +30,34 @@ class IngestRunResult:
     records_in: int
     records_ok: int
     records_failed: int
+    records_skipped: int
     sources: list[SourceRunResult]
+
+
+def _determine_run_status(results: list[SourceRunResult]) -> str:
+    errors = [item for item in results if item.error]
+    if not errors:
+        return "ok"
+    if len(errors) == len(results):
+        return "error"
+    return "partial"
+
+
+def _classify_exception(exc: Exception) -> str:
+    if isinstance(exc, SourceIngestError):
+        return f"{exc.code}: {exc}"
+    if isinstance(exc, httpx.HTTPStatusError):
+        status_code = exc.response.status_code if exc.response is not None else None
+        if status_code is not None and 400 <= status_code < 500:
+            return f"http_4xx: {exc}"
+        return f"http_5xx: {exc}"
+    if isinstance(exc, httpx.TimeoutException):
+        return f"timeout_error: {exc}"
+    if isinstance(exc, httpx.HTTPError):
+        return f"network_error: {exc}"
+    if isinstance(exc, ValueError):
+        return f"parse_error: {exc}"
+    return f"internal_error: {exc}"
 
 
 def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
@@ -50,11 +80,12 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
     for source_name, fn in [
         (
             "promed",
-            lambda: ingest_promed_rss(
+            lambda: ingest_promed_api(
                 db,
-                rss_url=settings.promed_rss_url,
+                api_base_url=settings.promed_api_base_url,
+                api_key=settings.promed_api_key,
                 timeout_seconds=settings.ingest_http_timeout_seconds,
-                item_limit=settings.ingest_promed_item_limit,
+                item_limit=settings.promed_limit,
             ),
         ),
         (
@@ -68,7 +99,6 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
         ),
     ]:
         try:
-            # Isolate each source in a SAVEPOINT so DB failures don't poison the shared session.
             with db.begin_nested():
                 stats = fn()
             source_results.append(
@@ -77,6 +107,7 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
                     records_in=stats.records_in,
                     records_ok=stats.records_ok,
                     records_failed=stats.records_failed,
+                    records_skipped=stats.records_skipped,
                 )
             )
         except Exception as exc:
@@ -87,20 +118,22 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
                     records_in=0,
                     records_ok=0,
                     records_failed=0,
-                    error=str(exc),
+                    records_skipped=0,
+                    error=_classify_exception(exc),
                 )
             )
 
     records_in = sum(item.records_in for item in source_results)
     records_ok = sum(item.records_ok for item in source_results)
     records_failed = sum(item.records_failed for item in source_results)
+    records_skipped = sum(item.records_skipped for item in source_results)
     errors = [item.error for item in source_results if item.error]
 
     pipeline_run.records_in = records_in
     pipeline_run.records_ok = records_ok
     pipeline_run.records_failed = records_failed
     pipeline_run.finished_at = datetime.now(tz=UTC)
-    pipeline_run.status = "error" if errors else "ok"
+    pipeline_run.status = _determine_run_status(source_results)
     pipeline_run.error_summary = " | ".join(errors) if errors else None
 
     db.commit()
@@ -111,5 +144,6 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
         records_in=records_in,
         records_ok=records_ok,
         records_failed=records_failed,
+        records_skipped=records_skipped,
         sources=source_results,
     )

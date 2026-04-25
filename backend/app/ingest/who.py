@@ -15,6 +15,7 @@ class IngestStats:
     records_in: int = 0
     records_ok: int = 0
     records_failed: int = 0
+    records_skipped: int = 0
 
 
 def _parse_period_date(entry: dict) -> datetime | None:
@@ -95,6 +96,7 @@ def ingest_who_odata(db: Session, url: str, timeout_seconds: float, item_limit: 
             )
         ).scalar_one_or_none()
         if existing:
+            stats.records_skipped += 1
             continue
 
         record = IndicatorSnapshot(

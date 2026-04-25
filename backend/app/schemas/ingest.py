@@ -6,6 +6,7 @@ class SourceRunResultSchema(BaseModel):
     records_in: int
     records_ok: int
     records_failed: int
+    records_skipped: int
     error: str | None = None
 
 
@@ -15,4 +16,5 @@ class IngestRunResponse(BaseModel):
     records_in: int
     records_ok: int
     records_failed: int
+    records_skipped: int
     sources: list[SourceRunResultSchema]
