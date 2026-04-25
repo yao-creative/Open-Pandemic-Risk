@@ -1,0 +1,109 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import UTC, datetime
+
+import httpx
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models import IndicatorSnapshot, SourceRegistry
+
+
+@dataclass
+class IngestStats:
+    records_in: int = 0
+    records_ok: int = 0
+    records_failed: int = 0
+
+
+def _parse_period_date(entry: dict) -> datetime | None:
+    value = entry.get("Year") or entry.get("TimeDimensionValue") or entry.get("Dim1")
+    if value is None:
+        return None
+    try:
+        year = int(str(value)[:4])
+        return datetime(year, 1, 1, tzinfo=UTC)
+    except Exception:
+        return None
+
+
+def _to_float(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def _get_or_create_source(db: Session, name: str, kind: str, base_url: str, poll_interval_minutes: int) -> SourceRegistry:
+    source = db.execute(select(SourceRegistry).where(SourceRegistry.name == name)).scalar_one_or_none()
+    if source:
+        return source
+    source = SourceRegistry(
+        name=name,
+        kind=kind,
+        base_url=base_url,
+        poll_interval_minutes=poll_interval_minutes,
+        enabled=True,
+    )
+    db.add(source)
+    db.flush()
+    return source
+
+
+def ingest_who_odata(db: Session, url: str, timeout_seconds: float, item_limit: int) -> IngestStats:
+    stats = IngestStats()
+    source = _get_or_create_source(
+        db,
+        name="who_odata",
+        kind="api",
+        base_url=url,
+        poll_interval_minutes=24 * 60,
+    )
+
+    response = httpx.get(url, timeout=timeout_seconds)
+    response.raise_for_status()
+    payload = response.json()
+    values = payload.get("value", [])
+
+    for entry in values[:item_limit]:
+        stats.records_in += 1
+        indicator_code = str(entry.get("IndicatorCode") or entry.get("Indicator") or "unknown")
+        country_code = str(
+            entry.get("SpatialDim")
+            or entry.get("Country")
+            or entry.get("CountryCode")
+            or "UNK"
+        )
+        period_date = _parse_period_date(entry)
+        numeric_value = _to_float(entry.get("NumericValue") or entry.get("Value"))
+        unit = entry.get("DisplayValue")
+        if unit is not None:
+            unit = str(unit)
+
+        existing = db.execute(
+            select(IndicatorSnapshot).where(
+                IndicatorSnapshot.source_id == source.id,
+                IndicatorSnapshot.indicator_code == indicator_code,
+                IndicatorSnapshot.country_code == country_code,
+                IndicatorSnapshot.period_date == period_date,
+            )
+        ).scalar_one_or_none()
+        if existing:
+            continue
+
+        record = IndicatorSnapshot(
+            source_id=source.id,
+            indicator_code=indicator_code,
+            country_code=country_code,
+            period_date=period_date,
+            value=numeric_value,
+            unit=unit,
+            dim_json=entry,
+        )
+        db.add(record)
+        stats.records_ok += 1
+
+    return stats
