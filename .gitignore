@@ -16,3 +16,9 @@ backend/data/
 
 # Build output
 frontend/dist/
+
+# Playwright MCP artifacts
+.playwright-mcp/
+
+# Playwright MCP artifacts
+.playwright-mcp/
