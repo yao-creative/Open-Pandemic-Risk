@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
@@ -68,7 +68,9 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
         ),
     ]:
         try:
-            stats = fn()
+            # Isolate each source in a SAVEPOINT so DB failures don't poison the shared session.
+            with db.begin_nested():
+                stats = fn()
             source_results.append(
                 SourceRunResult(
                     source=source_name,

@@ -78,7 +78,10 @@ def ingest_who_odata(db: Session, url: str, timeout_seconds: float, item_limit: 
             or "UNK"
         )
         period_date = _parse_period_date(entry)
-        numeric_value = _to_float(entry.get("NumericValue") or entry.get("Value"))
+        numeric_raw = entry.get("NumericValue")
+        if numeric_raw is None:
+            numeric_raw = entry.get("Value")
+        numeric_value = _to_float(numeric_raw)
         unit = entry.get("DisplayValue")
         if unit is not None:
             unit = str(unit)

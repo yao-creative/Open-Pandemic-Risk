@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -29,8 +29,8 @@ class RawIngestEvent(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     source_id: Mapped[int] = mapped_column(ForeignKey("source_registry.id"), index=True)
     external_id: Mapped[str] = mapped_column(String(512))
-    fetched_at: Mapped[datetime] = mapped_column(DateTime)
-    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     title: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     raw_text: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -45,7 +45,7 @@ class CanonicalEvent(Base):
     event_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     pathogen_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     location_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    event_start_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    event_start_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="suspected")
 
 
@@ -55,7 +55,7 @@ class EventObservation(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     canonical_event_id: Mapped[int] = mapped_column(ForeignKey("canonical_event.id"), index=True)
     raw_ingest_event_id: Mapped[int] = mapped_column(ForeignKey("raw_ingest_event.id"), index=True)
-    observed_at: Mapped[datetime] = mapped_column(DateTime)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     case_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     death_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     transmission_mode: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -80,7 +80,7 @@ class IndicatorSnapshot(Base):
     source_id: Mapped[int] = mapped_column(ForeignKey("source_registry.id"), index=True)
     indicator_code: Mapped[str] = mapped_column(String(64), index=True)
     country_code: Mapped[str] = mapped_column(String(16), index=True)
-    period_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    period_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     value: Mapped[float | None] = mapped_column(Float, nullable=True)
     unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     dim_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -92,7 +92,7 @@ class RiskScore(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     canonical_event_id: Mapped[int] = mapped_column(ForeignKey("canonical_event.id"), index=True)
     country_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    scored_at: Mapped[datetime] = mapped_column(DateTime)
+    scored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     risk_value: Mapped[float] = mapped_column(Float)
     risk_band: Mapped[str] = mapped_column(String(16))
     score_factors_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -107,8 +107,8 @@ class Alert(Base):
     risk_score_id: Mapped[int | None] = mapped_column(ForeignKey("risk_score.id"), nullable=True)
     alert_level: Mapped[str] = mapped_column(String(16))
     trigger_reason: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime)
-    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class PipelineRun(Base):
@@ -116,8 +116,8 @@ class PipelineRun(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     pipeline_name: Mapped[str] = mapped_column(String(64), index=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(16), index=True)
     records_in: Mapped[int] = mapped_column(Integer, default=0)
     records_ok: Mapped[int] = mapped_column(Integer, default=0)

@@ -7,7 +7,7 @@ from email.utils import parsedate_to_datetime
 import xml.etree.ElementTree as ET
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models import RawIngestEvent, SourceRegistry
@@ -51,6 +51,8 @@ def _get_or_create_source(db: Session, name: str, kind: str, base_url: str, poll
 def ingest_promed_rss(db: Session, rss_url: str, timeout_seconds: float, item_limit: int) -> IngestStats:
     now = datetime.now(tz=UTC)
     stats = IngestStats()
+    seen_external_ids: set[str] = set()
+    seen_content_hashes: set[str] = set()
 
     source = _get_or_create_source(
         db,
@@ -81,11 +83,16 @@ def ingest_promed_rss(db: Session, rss_url: str, timeout_seconds: float, item_li
             continue
 
         content_hash = hashlib.sha256(f"{title}\n{description}\n{link or ''}".encode("utf-8")).hexdigest()
+        if guid in seen_external_ids or content_hash in seen_content_hashes:
+            continue
 
         existing = db.execute(
             select(RawIngestEvent).where(
                 RawIngestEvent.source_id == source.id,
-                RawIngestEvent.external_id == guid,
+                or_(
+                    RawIngestEvent.external_id == guid,
+                    RawIngestEvent.content_hash == content_hash,
+                ),
             )
         ).scalar_one_or_none()
 
@@ -104,6 +111,8 @@ def ingest_promed_rss(db: Session, rss_url: str, timeout_seconds: float, item_li
             content_hash=content_hash,
         )
         db.add(record)
+        seen_external_ids.add(guid)
+        seen_content_hashes.add(content_hash)
         stats.records_ok += 1
 
     return stats
