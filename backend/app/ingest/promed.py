@@ -62,7 +62,7 @@ def ingest_promed_rss(db: Session, rss_url: str, timeout_seconds: float, item_li
         poll_interval_minutes=10,
     )
 
-    response = httpx.get(rss_url, timeout=timeout_seconds)
+    response = httpx.get(rss_url, timeout=timeout_seconds, follow_redirects=True)
     response.raise_for_status()
 
     root = ET.fromstring(response.text)

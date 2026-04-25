@@ -106,8 +106,9 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 def test_ingest_run_success(client: TestClient, monkeypatch: pytest.MonkeyPatch):
-    def fake_get(url: str, timeout: float):
+    def fake_get(url: str, timeout: float, follow_redirects: bool = False):
         if "promed" in url:
+            assert follow_redirects is True
             return _FakeResponse(text=PROMED_RSS)
         if "ghoapi" in url:
             return _FakeResponse(json_data=WHO_JSON)
@@ -126,7 +127,7 @@ def test_ingest_run_success(client: TestClient, monkeypatch: pytest.MonkeyPatch)
 
 
 def test_ingest_run_partial_failure(client: TestClient, monkeypatch: pytest.MonkeyPatch):
-    def fake_get(url: str, timeout: float):
+    def fake_get(url: str, timeout: float, follow_redirects: bool = False):
         if "promed" in url:
             return _FakeResponse(status_code=500)
         if "ghoapi" in url:
@@ -146,7 +147,7 @@ def test_ingest_run_partial_failure(client: TestClient, monkeypatch: pytest.Monk
 
 
 def test_who_numeric_zero_is_preserved(client: TestClient, monkeypatch: pytest.MonkeyPatch):
-    def fake_get(url: str, timeout: float):
+    def fake_get(url: str, timeout: float, follow_redirects: bool = False):
         if "promed" in url:
             return _FakeResponse(text=PROMED_RSS)
         if "ghoapi" in url:
@@ -164,8 +165,9 @@ def test_who_numeric_zero_is_preserved(client: TestClient, monkeypatch: pytest.M
 
 
 def test_promed_dedupes_by_content_hash(client: TestClient, monkeypatch: pytest.MonkeyPatch):
-    def fake_get(url: str, timeout: float):
+    def fake_get(url: str, timeout: float, follow_redirects: bool = False):
         if "promed" in url:
+            assert follow_redirects is True
             return _FakeResponse(text=PROMED_RSS_DUPLICATE_CONTENT_HASH)
         if "ghoapi" in url:
             return _FakeResponse(json_data=WHO_JSON)
