@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node
+node_modules/
+frontend/node_modules/
+
+# Env
+.env
+
+# Local data
+*.db
+backend/data/
+
+# Build output
+frontend/dist/
