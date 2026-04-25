@@ -78,6 +78,7 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
                 )
             )
         except Exception as exc:
+            db.rollback()
             source_results.append(
                 SourceRunResult(
                     source=source_name,
