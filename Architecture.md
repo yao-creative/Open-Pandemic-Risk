@@ -96,6 +96,107 @@ sequenceDiagram
   - Keep `raw_ingest_event` immutable and append-only for replay/debug.
   - Use soft deletes only on user-facing entities (`alert` acknowledgements), not ingest logs.
 
+## Current Database Schema (Mermaid ERD)
+
+```mermaid
+erDiagram
+    SOURCE_REGISTRY ||--o{ RAW_INGEST_EVENT : has
+    SOURCE_REGISTRY ||--o{ INDICATOR_SNAPSHOT : has
+    CANONICAL_EVENT ||--o{ EVENT_OBSERVATION : has
+    RAW_INGEST_EVENT ||--o{ EVENT_OBSERVATION : derived_from
+    CANONICAL_EVENT ||--o{ RISK_SCORE : has
+    CANONICAL_EVENT ||--o{ ALERT : has
+    RISK_SCORE ||--o{ ALERT : triggers
+
+    SOURCE_REGISTRY {
+        int id PK
+        string name UK
+        string kind
+        string base_url
+        int poll_interval_minutes
+        bool enabled
+    }
+
+    RAW_INGEST_EVENT {
+        int id PK
+        int source_id FK
+        string external_id
+        datetime fetched_at
+        datetime published_at
+        string url
+        string title
+        string raw_text
+        json raw_json
+        string content_hash
+    }
+
+    CANONICAL_EVENT {
+        int id PK
+        string event_key UK
+        string pathogen_id
+        string location_id
+        datetime event_start_date
+        string status
+    }
+
+    EVENT_OBSERVATION {
+        int id PK
+        int canonical_event_id FK
+        int raw_ingest_event_id FK
+        datetime observed_at
+        int case_count
+        int death_count
+        string transmission_mode
+        bool novelty_flag
+        float extract_confidence
+        string verification_state
+    }
+
+    INDICATOR_SNAPSHOT {
+        int id PK
+        int source_id FK
+        string indicator_code
+        string country_code
+        datetime period_date
+        float value
+        string unit
+        json dim_json
+    }
+
+    RISK_SCORE {
+        int id PK
+        int canonical_event_id FK
+        string country_code
+        datetime scored_at
+        float risk_value
+        string risk_band
+        json score_factors_json
+        string model_version
+    }
+
+    ALERT {
+        int id PK
+        int canonical_event_id FK
+        int risk_score_id FK
+        string alert_level
+        string trigger_reason
+        datetime created_at
+        datetime acknowledged_at
+    }
+
+    PIPELINE_RUN {
+        int id PK
+        string pipeline_name
+        datetime started_at
+        datetime finished_at
+        string status
+        int records_in
+        int records_ok
+        int records_failed
+        string error_summary
+    }
+```
+
 ## Ingestion and Scoring Proposal (High ROI)
 
 - Polling cadence:
@@ -139,3 +240,328 @@ sequenceDiagram
 - Phase 1 (Hackathon MVP): single worker, synchronous ingestion command, SQLite acceptable.
 - Phase 2 (Productionizable): move to Postgres + job queue, partition `raw_ingest_event` by month, add idempotent retry semantics.
 - Phase 3 (Operational): analyst review queue for low-confidence extractions, feedback loop into extraction prompts and scoring weights.
+
+# Edit 2 Async Orchestration With Celery RabbitMQ 2026-04-25 21:49 Branch: proposal/pandemic-early-warning-schema-ingestion
+
+## Celery Pipeline Sequence (Mermaid)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant API as backend/app/api/routes/ingest.py
+    participant Orchestrator as backend/app/workers/tasks/orchestrator.py
+    participant Queue as RabbitMQ (ingest queue)
+    participant PromedTask as backend/app/workers/tasks/source_promed.py
+    participant WhoTask as backend/app/workers/tasks/source_who.py
+    participant Finalizer as backend/app/workers/tasks/finalize_run.py
+    participant DB as backend/app/db.py (Postgres)
+
+    API->>DB: insert pipeline_run(state=queued)
+    API->>Queue: enqueue orchestrate_run(pipeline_run_id)
+    API-->>API: 202 Accepted + run_id
+
+    Queue->>Orchestrator: execute orchestrate_run
+    Orchestrator->>DB: set pipeline_run.state=running, started_at
+    Orchestrator->>Queue: fan-out group(source_promed, source_who)
+
+    Queue->>PromedTask: execute source ingestion
+    PromedTask->>DB: upsert source_run(state, counters, error_code)
+    PromedTask->>DB: upsert raw_ingest_event rows
+
+    Queue->>WhoTask: execute WHO ingestion
+    WhoTask->>DB: upsert source_run(state, counters, error_code)
+    WhoTask->>DB: upsert indicator_snapshot rows
+
+    Queue->>Finalizer: chord callback finalize_run
+    Finalizer->>DB: aggregate source_run rows
+    Finalizer->>DB: set pipeline_run.state=(succeeded|partial|failed), finished_at
+```
+
+## State Check Sequence (Mermaid)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as frontend polling client
+    participant API as backend/app/api/routes/ingest.py
+    participant DB as backend/app/db.py
+
+    UI->>API: GET /ingest/runs/{id}
+    API->>DB: read pipeline_run + source_run ordered by source
+    DB-->>API: current states, counters, errors, timestamps
+    API-->>UI: run summary + source-level progress
+
+    UI->>API: GET /ingest/runs/{id}/events (optional)
+    API->>DB: read pipeline_event logs for timeline
+    API-->>UI: transition timeline (queued->running->partial/succeeded/failed)
+```
+
+## Proposed Runtime State Machine
+
+- `pipeline_run.state`:
+  - `queued`: accepted by API, waiting in queue.
+  - `running`: orchestrator started and at least one source task scheduled.
+  - `partial`: at least one source failed, at least one source succeeded.
+  - `succeeded`: all enabled source tasks succeeded.
+  - `failed`: all source tasks failed or orchestration failed before any success.
+  - `canceled` (optional): manual cancellation before finalization.
+- `source_run.state`:
+  - `queued`, `running`, `succeeded`, `failed`, `skipped`.
+- Transition guardrails:
+  - only finalizer may set terminal `pipeline_run.state`.
+  - source tasks are idempotent by `(pipeline_run_id, source_name, shard_key)`.
+  - retries update `attempt` and keep latest terminal state per source.
+
+## Schema Additions For Async Control
+
+- Add columns to `pipeline_run`:
+  - `state` (replace current overloaded `status`), `queued_at`, `started_at`, `finished_at`, `progress_pct`, `request_id`, `celery_root_task_id`.
+- Add new `source_run` table:
+  - `id`, `pipeline_run_id`, `source_name`, `state`, `attempt`, `queued_at`, `started_at`, `finished_at`, `records_in`, `records_ok`, `records_failed`, `error_code`, `error_summary`, `task_id`.
+- Add optional `pipeline_event` table:
+  - append-only transition and warning log (`event_type`, `payload_json`, `created_at`) for UI timeline and incident debugging.
+- Recommended indexes:
+  - `pipeline_run(state, queued_at desc)`
+  - `source_run(pipeline_run_id, source_name)` unique
+  - `source_run(state, started_at desc)`
+
+## Proposed Advancement Database Schema (Mermaid ERD)
+
+```mermaid
+erDiagram
+    SOURCE_REGISTRY ||--o{ RAW_INGEST_EVENT : has
+    SOURCE_REGISTRY ||--o{ INDICATOR_SNAPSHOT : has
+    CANONICAL_EVENT ||--o{ EVENT_OBSERVATION : has
+    RAW_INGEST_EVENT ||--o{ EVENT_OBSERVATION : derived_from
+    CANONICAL_EVENT ||--o{ RISK_SCORE : has
+    CANONICAL_EVENT ||--o{ ALERT : has
+    RISK_SCORE ||--o{ ALERT : triggers
+
+    PIPELINE_RUN ||--o{ SOURCE_RUN : tracks
+    PIPELINE_RUN ||--o{ PIPELINE_EVENT : emits
+    SOURCE_RUN ||--o{ PIPELINE_EVENT : emits
+
+    SOURCE_REGISTRY {
+        int id PK
+        string name UK
+        string kind
+        string base_url
+        int poll_interval_minutes
+        bool enabled
+    }
+
+    RAW_INGEST_EVENT {
+        int id PK
+        int source_id FK
+        string external_id
+        datetime fetched_at
+        datetime published_at
+        string url
+        string title
+        string raw_text
+        json raw_json
+        string content_hash
+    }
+
+    CANONICAL_EVENT {
+        int id PK
+        string event_key UK
+        string pathogen_id
+        string location_id
+        datetime event_start_date
+        string status
+    }
+
+    EVENT_OBSERVATION {
+        int id PK
+        int canonical_event_id FK
+        int raw_ingest_event_id FK
+        datetime observed_at
+        int case_count
+        int death_count
+        string transmission_mode
+        bool novelty_flag
+        float extract_confidence
+        string verification_state
+    }
+
+    INDICATOR_SNAPSHOT {
+        int id PK
+        int source_id FK
+        string indicator_code
+        string country_code
+        datetime period_date
+        float value
+        string unit
+        json dim_json
+    }
+
+    RISK_SCORE {
+        int id PK
+        int canonical_event_id FK
+        string country_code
+        datetime scored_at
+        float risk_value
+        string risk_band
+        json score_factors_json
+        string model_version
+    }
+
+    ALERT {
+        int id PK
+        int canonical_event_id FK
+        int risk_score_id FK
+        string alert_level
+        string trigger_reason
+        datetime created_at
+        datetime acknowledged_at
+    }
+
+    PIPELINE_RUN {
+        int id PK
+        string pipeline_name
+        string state
+        datetime queued_at
+        datetime started_at
+        datetime finished_at
+        float progress_pct
+        string request_id
+        string celery_root_task_id
+        int records_in
+        int records_ok
+        int records_failed
+        string error_summary
+    }
+
+    SOURCE_RUN {
+        int id PK
+        int pipeline_run_id FK
+        string source_name
+        string state
+        int attempt
+        datetime queued_at
+        datetime started_at
+        datetime finished_at
+        int records_in
+        int records_ok
+        int records_failed
+        string error_code
+        string error_summary
+        string task_id
+    }
+
+    PIPELINE_EVENT {
+        int id PK
+        int pipeline_run_id FK
+        int source_run_id FK
+        string event_type
+        json payload_json
+        datetime created_at
+    }
+```
+
+## Folder Organization And Refactor Plan
+
+- `backend/app/api/routes/`
+  - `ingest.py` (`POST /ingest/run`, `GET /ingest/runs/{id}`, `GET /ingest/runs`)
+- `backend/app/core/`
+  - `config.py`, `celery_app.py`, `logging.py`
+- `backend/app/models/`
+  - `pipeline.py` (`PipelineRun`, `SourceRun`, `PipelineEvent`)
+  - `signal.py` (`RawIngestEvent`, `IndicatorSnapshot`, etc.)
+- `backend/app/schemas/`
+  - `ingest_run.py` (`RunCreateResponse`, `RunStatusResponse`, `SourceRunResponse`)
+- `backend/app/services/`
+  - `run_state_machine.py` (transition rules + validators)
+  - `ingest_registry.py` (source registration and enabled/disabled controls)
+- `backend/app/workers/tasks/`
+  - `orchestrator.py`, `source_promed.py`, `source_who.py`, `finalize_run.py`
+- `backend/app/ingest/adapters/`
+  - `promed_adapter.py`, `who_odata_adapter.py` (pure fetch/parse, no orchestration)
+- `backend/app/repos/`
+  - `pipeline_repo.py`, `source_run_repo.py` (DB write patterns and transaction boundaries)
+
+## Refactoring Steps (Low-Risk Sequence)
+
+1. Extract synchronous `run_ingestion` logic into reusable source task functions with no FastAPI dependency.
+2. Introduce `source_run` model and migration; keep current sync endpoint behavior untouched.
+3. Add Celery app + RabbitMQ wiring; implement orchestrator and finalizer tasks.
+4. Change `POST /ingest/run` to async trigger returning `202` and run id.
+5. Add `GET /ingest/runs/{id}` polling endpoint backed by `pipeline_run` + `source_run`.
+6. Deprecate old synchronous response shape after frontend poller is live.
+
+## Polling And Operational Checks
+
+- UI poll cadence:
+  - every `2s` while `queued|running`, every `10s` after terminal state for summary refresh.
+- Health endpoints:
+  - `GET /healthz` for process liveness.
+  - `GET /readyz` includes DB + broker reachability.
+- Operator checks:
+  - queue depth, worker concurrency, oldest queued run age, per-source failure rate over last N runs.
+- Retry policy:
+  - `autoretry_for` transient HTTP/network errors with bounded exponential backoff.
+  - mark `source_run.failed` only after retry budget exhausted.
+
+## Rollout Notes
+
+- Stage A (hackathon-compatible): single Celery worker, one queue, one finalizer, SQLite still allowed for local demo.
+- Stage B: move runtime to Postgres, enable multiple workers and source-specific queues.
+- Stage C: add dead-letter queue, poison message handling, and alerting on stuck `running` state via heartbeat timeout.
+
+# Edit 3 SQLAlchemy Flush Decision Points 2026-04-25 21:52 Branch: proposal/pandemic-early-warning-schema-ingestion
+
+## Pipeline Run Create Flow With Explicit Flush (Mermaid)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant API as backend/app/api/routes/ingest.py
+    participant Session as SQLAlchemy Session (backend/app/db.py)
+    participant DB as Postgres
+    participant Repo as backend/app/repos/pipeline_repo.py
+
+    API->>Repo: create PipelineRun(status=running, counters=0)
+    Repo->>Session: db.add(pipeline_run)
+    Note right of Session: Object is pending in Unit of Work only
+    Repo->>Session: db.flush()
+    Session->>DB: INSERT pipeline_run(...)
+    DB-->>Session: generated id/defaults
+    Session-->>Repo: pipeline_run.id available
+    Repo-->>API: return run_id for downstream records/logs
+    API->>Session: db.commit()
+```
+
+## Autoflush and Commit-Only Path (Mermaid)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Service as backend/app/services/run_service.py
+    participant Session as SQLAlchemy Session
+    participant DB as Postgres
+
+    Service->>Session: db.add(pipeline_run)
+    Note right of Session: No SQL yet unless flush/autoflush triggers
+    Service->>Session: execute query OR db.commit()
+    Session->>DB: implicit flush (INSERT/UPDATE pending rows)
+    DB-->>Session: constraints/defaults evaluated
+    Session-->>Service: query result or commit success/failure
+```
+
+## Implementation Notes
+
+- `db.add()` stages the row in memory; it does not persist immediately.
+- `db.flush()` is a transactional write checkpoint, not a durability boundary.
+- Use explicit `flush()` when one of these is true:
+  - subsequent writes need `pipeline_run.id` in the same transaction.
+  - fail-fast behavior is needed before expensive downstream processing.
+  - DB-side defaults/triggers must be materialized before building a response payload.
+- Skip explicit `flush()` when the code can rely on implicit flush at query/commit and does not depend on generated values yet.
+- Keep `commit()` at transaction boundaries so run creation plus related writes remain atomic and rollback-safe.
+
+## Operational Guardrails
+
+- Avoid `flush()` after every `add()`; it increases round trips with little value.
+- Treat flush errors (unique/FK/check violations) as expected transactional failures and return deterministic API errors.
+- For async orchestration, create `pipeline_run`, flush once to get run id, enqueue tasks, then commit once.
