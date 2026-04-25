@@ -1,0 +1,55 @@
+name: Compose Health Check
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  compose-health:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create CI env file
+        run: |
+          cat > .env <<'EOT'
+          DATABASE_URL=sqlite:///./data/app.db
+          AZURE_OPENAI_ENDPOINT=https://example.openai.azure.com/
+          AZURE_OPENAI_API_KEY=dummy-key
+          AZURE_OPENAI_API_VERSION=2024-02-15-preview
+          AZURE_OPENAI_DEPLOYMENT=dummy-deployment
+          EOT
+
+      - name: Build and start services
+        run: docker compose up -d --build
+
+      - name: Wait for backend to become healthy
+        run: |
+          for i in $(seq 1 30); do
+            health=$(docker inspect --format='{{.State.Health.Status}}' $(docker compose ps -q backend) 2>/dev/null || true)
+            if [ "$health" = "healthy" ]; then
+              echo "Backend is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Backend did not become healthy in time"
+          docker compose logs backend
+          exit 1
+
+      - name: Assert /healthz and /readyz
+        run: |
+          curl --fail http://localhost:8000/healthz
+          curl --fail http://localhost:8000/readyz
+
+      - name: Show compose status
+        if: always()
+        run: docker compose ps
+
+      - name: Shutdown services
+        if: always()
+        run: docker compose down -v
