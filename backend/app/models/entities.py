@@ -127,6 +127,32 @@ class PipelineRun(Base):
     details_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
+class PipelineStageRun(Base):
+    __tablename__ = "pipeline_stage_run"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pipeline_run_id: Mapped[int] = mapped_column(ForeignKey("pipeline_run.id"), index=True)
+    stage_name: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metrics_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    artifacts_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error_summary: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+
+
+class PipelineRunEvent(Base):
+    __tablename__ = "pipeline_run_event"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pipeline_run_id: Mapped[int] = mapped_column(ForeignKey("pipeline_run.id"), index=True)
+    stage_name: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(64), index=True)
+    message: Mapped[str] = mapped_column(String(1024))
+    payload_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class AgentToolAudit(Base):
     __tablename__ = "agent_tool_audit"
 

@@ -62,6 +62,7 @@ def ingest_who_odata(
     *,
     profile_name: str | None = None,
     profile_category: str | None = None,
+    snapshot_ref_id: int | None = None,
 ) -> IngestStats:
     stats = IngestStats()
     seen_keys: set[tuple[str, str, datetime | None]] = set()
@@ -118,6 +119,8 @@ def ingest_who_odata(
             tagged_entry["_profile_name"] = profile_name
         if profile_category is not None:
             tagged_entry["_profile_category"] = profile_category
+        if snapshot_ref_id is not None:
+            tagged_entry["_snapshot_ref_id"] = snapshot_ref_id
 
         record = IndicatorSnapshot(
             source_id=source.id,
