@@ -135,3 +135,15 @@ class ExaCitation(Base):
     snippet: Mapped[str | None] = mapped_column(String, nullable=True)
     query: Mapped[str] = mapped_column(String(512))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PipelineRunScore(Base):
+    __tablename__ = "pipeline_run_score"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pipeline_run_id: Mapped[int] = mapped_column(ForeignKey("pipeline_run.id"), index=True)
+    scored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    risk_value: Mapped[float] = mapped_column(Float)
+    risk_band: Mapped[str] = mapped_column(String(16))
+    factors_json: Mapped[dict] = mapped_column(JSON)
+    model_version: Mapped[str] = mapped_column(String(32), default="deterministic-v1")
