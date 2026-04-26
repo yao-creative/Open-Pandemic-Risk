@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.ingest.who import ingest_who_odata
 from app.models import PipelineRun
+from app.pipeline.contracts import PipelineStage, StageInput, StageOutput
+from app.pipeline.orchestrator import PipelineOrchestrator
 from app.settings import Settings
 
 
@@ -30,6 +32,25 @@ class IngestRunResult:
     records_failed: int
     records_skipped: int
     sources: list[SourceRunResult]
+
+
+class WhoIngestStage(PipelineStage):
+    name = "who_odata"
+
+    def run(self, stage_input: StageInput) -> StageOutput:
+        stats = ingest_who_odata(
+            stage_input.db,
+            url=stage_input.settings.who_odata_url,
+            timeout_seconds=stage_input.settings.ingest_http_timeout_seconds,
+            item_limit=stage_input.settings.ingest_who_item_limit,
+        )
+        return StageOutput(
+            stage=self.name,
+            records_in=stats.records_in,
+            records_ok=stats.records_ok,
+            records_failed=stats.records_failed,
+            records_skipped=stats.records_skipped,
+        )
 
 
 def _determine_run_status(results: list[SourceRunResult]) -> str:
@@ -71,37 +92,27 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
     db.add(pipeline_run)
     db.flush()
 
-    source_results: list[SourceRunResult] = []
-
-    try:
-        with db.begin_nested():
-            stats = ingest_who_odata(
-                db,
-                url=settings.who_odata_url,
-                timeout_seconds=settings.ingest_http_timeout_seconds,
-                item_limit=settings.ingest_who_item_limit,
-            )
-        source_results.append(
-            SourceRunResult(
-                source="who_odata",
-                records_in=stats.records_in,
-                records_ok=stats.records_ok,
-                records_failed=stats.records_failed,
-                records_skipped=stats.records_skipped,
-            )
+    stage_input = StageInput(
+        db=db,
+        settings=settings,
+        pipeline_name=pipeline_run.pipeline_name,
+        pipeline_run_id=pipeline_run.id,
+    )
+    stage_outputs = PipelineOrchestrator(classify_exception=_classify_exception).run(
+        stage_input=stage_input,
+        stages=[WhoIngestStage()],
+    )
+    source_results = [
+        SourceRunResult(
+            source=item.stage,
+            records_in=item.records_in,
+            records_ok=item.records_ok,
+            records_failed=item.records_failed,
+            records_skipped=item.records_skipped,
+            error=item.error,
         )
-    except Exception as exc:
-        db.rollback()
-        source_results.append(
-            SourceRunResult(
-                source="who_odata",
-                records_in=0,
-                records_ok=0,
-                records_failed=0,
-                records_skipped=0,
-                error=_classify_exception(exc),
-            )
-        )
+        for item in stage_outputs
+    ]
 
     records_in = sum(item.records_in for item in source_results)
     records_ok = sum(item.records_ok for item in source_results)
