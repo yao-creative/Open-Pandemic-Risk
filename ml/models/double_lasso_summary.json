@@ -1,0 +1,34 @@
+{
+  "n_rows": 5191,
+  "target_rate": 0.549412444615681,
+  "treatment_rate": 0.0044307455210942015,
+  "selected_controls_union": [
+    "f_case_accel",
+    "f_pub_quarter",
+    "f_title_has_outbreak_kw",
+    "f_title_topic_code",
+    "f_title_word_count"
+  ],
+  "lasso_alpha_d": 0.009201884777983808,
+  "lasso_alpha_y": 0.001305554933661171,
+  "r2": 0.35215424146323326,
+  "adj_r2": 0.3514044199834453,
+  "coefficients": {
+    "const": 1.013257637262423,
+    "treatment_f_title_has_us_kw": 0.15396831795916474,
+    "control_f_case_accel": -1.0194391044020504e-07,
+    "control_f_pub_quarter": -0.05558437323432561,
+    "control_f_title_has_outbreak_kw": -0.4915880410115385,
+    "control_f_title_topic_code": 0.05715027942009063,
+    "control_f_title_word_count": -0.02460512239186042
+  },
+  "pvalues": {
+    "const": 0.0,
+    "treatment_f_title_has_us_kw": 0.15829366107791965,
+    "control_f_case_accel": 0.5216619980804744,
+    "control_f_pub_quarter": 1.3751415013146815e-27,
+    "control_f_title_has_outbreak_kw": 3.406659432680777e-178,
+    "control_f_title_topic_code": 5.703022735839379e-07,
+    "control_f_title_word_count": 1.766639845125284e-23
+  }
+}

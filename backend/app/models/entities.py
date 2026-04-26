@@ -238,3 +238,32 @@ class EnrichmentReport(Base):
     enrichment_run_id: Mapped[int] = mapped_column(ForeignKey("enrichment_run.id"), index=True)
     summary_json: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class MlRiskSnapshot(Base):
+    __tablename__ = "ml_risk_snapshot"
+    __table_args__ = (UniqueConstraint("snapshot_ref_id", name="uq_ml_risk_snapshot_ref"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    snapshot_ref_id: Mapped[int] = mapped_column(ForeignKey("pipeline_run.id"), index=True)
+    model_name: Mapped[str] = mapped_column(String(128))
+    model_version: Mapped[str] = mapped_column(String(64))
+    payload_json: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class RecommendationResponse(Base):
+    __tablename__ = "recommendation_response"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pipeline_run_id: Mapped[int] = mapped_column(ForeignKey("pipeline_run.id"), index=True)
+    enrichment_run_id: Mapped[int | None] = mapped_column(ForeignKey("enrichment_run.id"), nullable=True, index=True)
+    snapshot_ref_id: Mapped[int] = mapped_column(ForeignKey("pipeline_run.id"), index=True)
+    ml_snapshot_id: Mapped[int] = mapped_column(ForeignKey("ml_risk_snapshot.id"), index=True)
+    recommendation_level: Mapped[str] = mapped_column(String(64))
+    confidence: Mapped[str] = mapped_column(String(32))
+    response_text: Mapped[str] = mapped_column(String)
+    response_json: Mapped[dict] = mapped_column(JSON)
+    citations_json: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
