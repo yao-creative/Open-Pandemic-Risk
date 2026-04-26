@@ -1,134 +1,206 @@
-# AI x Bio Hackathon Notes
+# BioHack 2026: Pandemic Signal Triage Pipeline
 
-## Hackathon
+## Abstract
+This project is an attempt to build a pandemic risk monitoring platform with four stages: Alert (ingest) to collect WHO snapshot signals, Enrich (agent with search access) to gather supporting external context, Evaluate Risk (double lasso) to score risk and confidence from a stable feature contract, and Recommend Actionable Next Steps (agent) to produce an auditable response draft with citations so public-health teams can move faster from raw signals to explainable action while keeping humans in the decision loop.
 
-- Event: [AI x Bio Hackathon](https://apartresearch.com/research)
-- Dates mentioned in chat: April 24-26, 2026
-- Focus: how AI changes biological risk, and what can be built to stay ahead
+## What This Repo Implements
+- FastAPI backend that orchestrates a 4-stage pipeline (`pipeline_full_v1`)
+- SQLite-backed persistence for runs, stage-level telemetry, enrichment artifacts, ML snapshots, and recommendations
+- Vite + TypeScript frontend dashboard that triggers runs and polls live stage status
+- ML workspace (`ml/`) for dataset building and model artifact generation used by runtime scoring
+- Current ingestion source-of-truth is WHO endpoints only (no additional source connectors are active in runtime)
 
-## Tracks
+## Current Runtime Architecture
+The canonical runtime flow is:
+1. Alert: `ingest_snapshot`
+2. Enrich: `enrich_snapshot_agent`
+3. Evaluate Risk: `score_snapshot` (double lasso artifact contract)
+4. Recommend Next Steps: `recommend_response_agent`
 
-1. DNA synthesis screening and guardrails for AI-powered bio design tools
-2. Pandemic early warning systems: wastewater, metagenomic sequencing, disease intelligence
-3. Practitioner tools: dashboards, risk assessment, policy trackers, and communications tools for under-resourced institutions
-4. Benchtop DNA synthesizer security: phone-home screening, tamper-proof hardware, split-order detection
+### Pipeline Orchestration
+- Endpoint: `POST /pipeline/run`
+- Runner: `backend/app/pipeline/runner/pipeline_runner.py`
+- Stage registry: `backend/app/pipeline/registry.py`
+- Status and observability:
+  - `GET /pipeline/runs/{id}`
+  - `GET /pipeline/runs/{id}/events`
+  - `pipeline_run`, `pipeline_stage_run`, and `pipeline_run_event` tables
 
-## Funding Angle
+### Stage Responsibilities
+- `ingest_snapshot`: pulls WHO OData indicators and writes scoped `indicator_snapshot` rows
+- `enrich_snapshot_agent`: runs bounded ReAct-style enrichment, persists findings/report/citations
+- `score_snapshot`: loads model artifacts from `ml/models`, derives features, writes `ml_risk_snapshot`
+- `recommend_response_agent`: produces recommendation text + structured report + evidence citations
 
-- [Coefficient Giving](https://www.coefficientgiving.org/) biosecurity RFP mentioned in chat
-- Deadline mentioned in chat: May 11
-- Chat claim: possible follow-on 500-word Expression of Interest
+## WHO Ingest Schema (Backend)
+Current ingestion profile: `who_surveillance_mvp_v1` (`backend/app/ingest/who_profiles.py`).
 
-## Judge Context
+WHO OData payload fields consumed from each row:
+- `IndicatorCode` (fallback `Indicator`) -> `indicator_snapshot.indicator_code`
+- `SpatialDim` (fallback `Country`/`CountryCode`) -> `indicator_snapshot.country_code`
+- `Year` (fallback `TimeDimensionValue`/`Dim1`) -> `indicator_snapshot.period_date` (normalized as `YYYY-01-01T00:00:00Z`)
+- `NumericValue` (fallback `Value`) -> `indicator_snapshot.value`
+- `DisplayValue` -> `indicator_snapshot.unit`
+- Full raw row is persisted into `indicator_snapshot.dim_json`
 
-### People Mentioned
+Snapshot scoping metadata persisted in `indicator_snapshot.dim_json`:
+- `_profile_name` (example: `who_surveillance_mvp_v1`)
+- `_profile_category` (`surveillance_capacity` | `event_signals` | `risk_modifiers`)
+- `_snapshot_ref_id` (foreign key reference to ingestion `pipeline_run.id`)
 
-- Judges named in chat:
-  - Jasper Goetting, SecureBio
-  - Jason Hoelscher-Obermaier, Apart Research
-- Influential speakers mentioned in chat:
-  - Kevin Esvelt
-  - Jaime Yassif
-  - Conor McGurk
-  - Steph Guerra
-  - Jonas Sandbrink
+`indicator_snapshot` storage columns:
+- `id`
+- `source_id`
+- `indicator_code`
+- `country_code`
+- `period_date`
+- `value`
+- `unit`
+- `dim_json`
 
-### What Judges Likely Reward
+### Debugging and Stage Isolation
+- `GET /debug/stages`: list stage catalog and required inputs
+- `POST /debug/stages/{stage}/validate`: validate a stage context without executing
+- `POST /debug/stages/{stage}/run`: run a single stage directly
 
-- Open-source tool
-- Real practitioner gap
-- Technical substance
-- Clear bio-risk reduction story
-- Usable by under-resourced institutions
+## Data Model Highlights
+Key tables used by the production path:
+- `pipeline_run`, `pipeline_stage_run`, `pipeline_run_event`
+- `indicator_snapshot`
+- `enrichment_run`, `context_dump`, `enrichment_finding`, `enrichment_report`, `exa_citation`, `agent_tool_audit`
+- `ml_risk_snapshot`, `pipeline_run_score`
+- `recommendation_response`
 
-## Project Direction
+See `Architecture.md` for detailed sequence diagrams and schema evolution notes.
 
-### Goal
+## ML Schema (Training + Runtime)
+The backend score stage is aligned to the ML slim feature contract produced in `ml/scripts/preprocess_xy_polars.py`.
 
-Bio threat intel aggregator.
+Training slim dataset schema (`ml_ready_slim_us.parquet`):
+- `record_id`
+- `publication_ts`
+- `title`
+- `f_title_topic_code`
+- `f_title_has_outbreak_kw`
+- `f_title_word_count`
+- `f_pub_quarter`
+- `f_title_has_us_kw`
+- `target_t72h`
+- `intervention_priority_score`
 
-### Analogs
+Runtime scoring payload schema persisted in `ml_risk_snapshot.payload_json`:
+- `model_output`
+- `model_output.risk_value` (float 0..1)
+- `model_output.risk_band` (`critical` | `high` | `medium` | `low`)
+- `confidence`
+- `confidence.band` (`high` | `medium` | `low`)
+- `confidence.score` (float 0..1)
+- `ates` (dictionary, currently empty in baseline)
+- `features`
+- `features.f_title_topic_code`
+- `features.f_title_has_outbreak_kw`
+- `features.f_title_word_count`
+- `features.f_pub_quarter`
+- `features.f_title_has_us_kw`
+- `features.f_case_accel`
 
-- Recorded Future
-- Mandiant
-- CrowdStrike
-- HealthMap
-- ProMED
-- Sormas
-- GoData
+## Local Setup
 
-### Build Concept
+### 1. Environment
+Copy `.env.example` to `.env` and fill required values:
+- `DATABASE_URL` (example: `sqlite:///./data/app.db`)
+- `AZURE_OPENAI_ENDPOINT`
+- `AZURE_OPENAI_API_KEY`
+- `AZURE_OPENAI_DEPLOYMENT`
+- `EXA_API_KEY` (required for live enrichment stage)
 
-Aggregate data to provide exact information, a fresh alert feed, and response decisions with rationale.
+### 2. Backend (local)
+```bash
+cd backend
+uv sync
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8010 --reload
+```
 
-### Chat Rank
+### 3. Frontend (local)
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-1
+### 4. Docker Compose
+From repo root:
+```bash
+docker compose up --build
+```
+- Frontend: `http://127.0.0.1:5173`
+- Backend: `http://127.0.0.1:8010`
 
-### Judge Preferences
+## API Quickstart
+Create a run:
+```bash
+curl -sS -X POST http://127.0.0.1:8010/pipeline/run \
+  -H 'Content-Type: application/json' \
+  -d '{"idempotency_key":"demo-001"}'
+```
 
-- Novelty
-- Approach
-- Solution
-- Clarity of problem addressed
+Check status:
+```bash
+curl -sS http://127.0.0.1:8010/pipeline/runs/<PIPELINE_RUN_ID>
+```
 
-## Core Problems to Solve
+Check run events:
+```bash
+curl -sS http://127.0.0.1:8010/pipeline/runs/<PIPELINE_RUN_ID>/events
+```
 
-- Convert messy global signals into actionable early warnings with clear importance.
+## Tests
+From repo root:
+```bash
+make test
+```
 
-## Ingestion (Ranked Notes)
+Other targets:
+- `make test-unit`
+- `make test-contract`
+- `make test-integration`
+- `make test-live`
+- `make test-e2e-live`
 
-- WHO:
-  - https://www.who.int/data/gho/info/gho-odata-api
-  - GHO Indicator Metadata Registry
-  - GHO Data Portal
-- CDC NWSS API (wastewater API)
-- ProMED:
-  - https://www.google.com/search?q=https://promedmail.org/promed-posts/
-  - https://www.google.com/search?q=https://promedmail.org/rss-feeds/
-  - Notes: RSS; ISID directly (bulk/high frequency)
-- HealthMap:
-  - HealthMap API Information
-  - Interactive Map
-  - HealthMap GitHub repositories
+## ML Workspace
+`ml/` is the training/feature-engineering source-of-truth for current scoring artifacts. See `ml/README.md` for dataset and artifact generation commands.
 
-## Additional Data Signals
+## Appendix: Limitations and Dual-Use Considerations
 
-- News
-- OpenFlights
-- WorldPop
-- GLEAM
-- ProMED
+### Limitations
+- False positives are possible when sparse or noisy indicator snapshots are over-interpreted as elevated risk, especially in low-data regions.
+- False negatives are possible when upstream source coverage is incomplete, delayed, or missing context not captured in WHO indicator snapshots.
+- Edge cases include schema drift in upstream WHO payloads, missing/invalid dates, country-code inconsistencies, and low-signal periods that reduce model reliability.
+- Current scalability is constrained by single-service orchestration, SQLite write patterns, bounded per-run enrichment calls, and synchronous bottlenecks in stage execution.
+- Recommendation outputs are decision-support drafts, not validated operational directives, and require human review before external use.
 
-## User Features
+### Dual-Use Risks
+- Risk summaries and recommendation outputs could be repurposed to identify surveillance blind spots or timing windows in public-health response systems.
+- Automated enrichment and triage could be misused to amplify misinformation if unverified external context is treated as authoritative.
+- Any system that ranks risk signals may unintentionally enable selective attention attacks, where adversaries shape visible indicators to manipulate prioritization.
 
-- Feed: low-latency, fresh signals
-- Evaluation: signal confidence and importance
-- Response: actionable recommendations
+### Responsible Disclosure Recommendations
+- If vulnerabilities are discovered (data leakage, prompt/tool abuse paths, unauthorized access, unsafe output behavior), disclose privately to maintainers first with reproduction steps, impact level, and proposed mitigations.
+- Avoid public release of exploit details until patches are deployed and affected users have a remediation window.
+- Track disclosures in a security log with dates, affected components, fix status, and verification evidence.
+- Implement and publish a coordinated disclosure policy with a dedicated security contact and target response timelines.
 
-## Core Technical Features
+### Ethical Considerations
+- Maintain human-in-the-loop review for high-impact outputs, especially recommendations that may influence public communication or resource allocation.
+- Prioritize transparency: preserve citations, confidence bands, and provenance so operators can challenge or override model outputs.
+- Minimize harm from automation bias by presenting uncertainty and failure modes explicitly, not just single-score rankings.
+- Use least-privilege access patterns for external tools and data, and avoid collecting unnecessary personally identifiable information.
+- Evaluate for geographic and reporting bias so low-resource regions are not systematically deprioritized by data availability artifacts.
 
-- Ingestion and normalization
-- Event extraction
-- Anomaly detection
-- Fusion
-- Risk scoring
-- Recommended response based on analytics
-
-## Audience
-
-- Public health: primary
-- Global organizations: coordination
-- Hospitals: preparedness
-- Enterprises: risk
-- Researchers: analysis
-
-## ML Experiment (Ingestion-Only)
-
-A manual first-pass dataset builder now exists under `ml/`:
-
-- X: pull WHO fixed-profile rows from `indicator_snapshot`
-- Y: pull WHO DON labels, with fallback to WHO Emergencies when DON is empty
-- preprocess with Polars into `ml/data/ml_ready.parquet`
-
-See `ml/README.md` for command sequence and notebook usage.
+### Suggestions for Future Improvements
+- Add calibrated evaluation against retrospective outbreak timelines with explicit false-positive/false-negative tracking.
+- Introduce source diversification with explicit trust weighting, while keeping strict provenance per evidence item.
+- Replace SQLite in production paths with a more scalable transactional store and queue-backed worker execution.
+- Strengthen abuse resistance with policy checks on agent actions, rate limits, and anomaly detection on tool usage.
+- Add robust model monitoring (drift, calibration, feature stability) and scheduled retraining with versioned rollout gates.
+- Expand red-team testing for dual-use scenarios and publish a recurring safety review cadence.
