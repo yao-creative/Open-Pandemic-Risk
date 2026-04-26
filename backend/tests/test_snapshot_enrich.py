@@ -152,3 +152,34 @@ def test_snapshot_enrich_requires_compatible_snapshot(client: TestClient, monkey
     resp = client.post("/agent/enrich", json={"idempotency_key": "missing-snapshot"})
     assert resp.status_code == 400
     assert "no compatible snapshot" in resp.json()["detail"]
+
+
+@pytest.mark.integration_local
+def test_list_enrichment_runs_endpoint(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    _install_fake_exa(monkeypatch)
+
+    with db_module.get_session_local()() as db:
+        ingest_run = PipelineRun(
+            pipeline_name="phase1_sync_ingestion",
+            started_at=datetime.now(tz=UTC),
+            finished_at=datetime.now(tz=UTC),
+            status="ok",
+            records_in=1,
+            records_ok=1,
+            records_failed=0,
+            error_summary=None,
+        )
+        db.add(ingest_run)
+        db.commit()
+
+    create_resp = client.post("/agent/enrich", json={"idempotency_key": "list-runs"})
+    assert create_resp.status_code == 200
+    run_id = create_resp.json()["enrichment_run_id"]
+
+    list_resp = client.get("/agent/runs", params={"status": "completed", "limit": 10, "offset": 0})
+    assert list_resp.status_code == 200
+    payload = list_resp.json()
+    assert payload["limit"] == 10
+    assert payload["offset"] == 0
+    assert payload["total"] >= 1
+    assert any(item["enrichment_run_id"] == run_id for item in payload["items"])

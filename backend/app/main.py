@@ -1,10 +1,11 @@
 from dataclasses import asdict
 from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from .agents.react_agent import AgentRunner
@@ -13,7 +14,7 @@ from .db import check_db_ready, get_db_session, get_session_local, init_db
 from .models import EnrichmentReport, EnrichmentRun, PipelineRun, PipelineRunScore
 from .pipeline.run_ingest import run_ingestion
 from .pipeline.stages.score import score_pipeline_run
-from .schemas import EnrichmentRunStatusResponse, IngestRunResponse, ScoreRunResponse, SnapshotEnrichRequest, SnapshotEnrichResponse, SourceRunResultSchema
+from .schemas import EnrichmentRunListItem, EnrichmentRunListResponse, EnrichmentRunStatusResponse, IngestRunResponse, ScoreRunResponse, SnapshotEnrichRequest, SnapshotEnrichResponse, SourceRunResultSchema
 from .settings import get_settings
 
 app = FastAPI(title="biohack-api")
@@ -153,6 +154,63 @@ def agent_snapshot_enrich(
         snapshot_ref_id=enrichment_run.snapshot_ref_id,
         status=enrichment_run.status,
     )
+
+
+@app.get("/agent/runs", response_model=EnrichmentRunListResponse)
+def list_agent_runs(
+    db: Session = Depends(get_db_session),
+    limit: int = 20,
+    offset: int = 0,
+    status: Literal["queued", "running", "completed", "failed"] | None = None,
+    snapshot_ref_id: int | None = None,
+    pipeline_run_id: int | None = None,
+    has_report: bool | None = None,
+    order_by: Literal["created_at", "updated_at", "id"] = "created_at",
+    order: Literal["asc", "desc"] = "desc",
+) -> EnrichmentRunListResponse:
+    bounded_limit = min(max(limit, 1), 100)
+    bounded_offset = max(offset, 0)
+
+    query = select(EnrichmentRun)
+    count_query = select(func.count(EnrichmentRun.id))
+
+    if status is not None:
+        query = query.where(EnrichmentRun.status == status)
+        count_query = count_query.where(EnrichmentRun.status == status)
+    if snapshot_ref_id is not None:
+        query = query.where(EnrichmentRun.snapshot_ref_id == snapshot_ref_id)
+        count_query = count_query.where(EnrichmentRun.snapshot_ref_id == snapshot_ref_id)
+    if pipeline_run_id is not None:
+        query = query.where(EnrichmentRun.pipeline_run_id == pipeline_run_id)
+        count_query = count_query.where(EnrichmentRun.pipeline_run_id == pipeline_run_id)
+    if has_report is not None:
+        report_exists = select(EnrichmentReport.id).where(EnrichmentReport.enrichment_run_id == EnrichmentRun.id).exists()
+        query = query.where(report_exists if has_report else ~report_exists)
+        count_query = count_query.where(report_exists if has_report else ~report_exists)
+
+    sort_column = {
+        "created_at": EnrichmentRun.created_at,
+        "updated_at": EnrichmentRun.updated_at,
+        "id": EnrichmentRun.id,
+    }[order_by]
+    query = query.order_by(sort_column.asc() if order == "asc" else sort_column.desc())
+    rows = db.execute(query.limit(bounded_limit).offset(bounded_offset)).scalars().all()
+    total = int(db.execute(count_query).scalar_one())
+
+    items = [
+        EnrichmentRunListItem(
+            enrichment_run_id=row.id,
+            pipeline_run_id=row.pipeline_run_id,
+            snapshot_ref_id=row.snapshot_ref_id,
+            status=row.status,
+            created_at=row.created_at.isoformat(),
+            updated_at=row.updated_at.isoformat(),
+            started_at=row.started_at.isoformat() if row.started_at else None,
+            finished_at=row.finished_at.isoformat() if row.finished_at else None,
+        )
+        for row in rows
+    ]
+    return EnrichmentRunListResponse(items=items, total=total, limit=bounded_limit, offset=bounded_offset)
 
 
 @app.get("/agent/runs/{enrichment_run_id}", response_model=EnrichmentRunStatusResponse)

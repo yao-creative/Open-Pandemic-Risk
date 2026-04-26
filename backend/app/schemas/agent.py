@@ -32,6 +32,24 @@ class EnrichmentRunStatusResponse(BaseModel):
     report: dict[str, Any] | None = None
 
 
+class EnrichmentRunListItem(BaseModel):
+    enrichment_run_id: int
+    pipeline_run_id: int
+    snapshot_ref_id: int | None
+    status: str
+    created_at: str
+    updated_at: str
+    started_at: str | None
+    finished_at: str | None
+
+
+class EnrichmentRunListResponse(BaseModel):
+    items: list[EnrichmentRunListItem]
+    total: int
+    limit: int
+    offset: int
+
+
 class ScoreRunResponse(BaseModel):
     enrichment_run_id: int
     pipeline_run_id: int
