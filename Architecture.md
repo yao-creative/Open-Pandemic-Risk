@@ -953,3 +953,96 @@ sequenceDiagram
 - Pipeline observability is first-class with `pipeline_stage_run` and `pipeline_run_event` tables.
 - Scoring stage is snapshot-scoped using `_snapshot_ref_id` tag populated during ingest.
 - Dedicated live e2e workflow added at `.github/workflows/e2e-live.yml` and local target added as `make test-e2e-live`.
+
+# Edit 8 ML Source-Of-Truth Cutover Plan For Recommendation Stage 2026-04-26 21:37 Branch: feature/ml-initial-train-dataset-who-api
+
+## Plan Summary
+
+- Keep `ml/` as training and feature-engineering source-of-truth for the slim schema (`f_title_topic_code`, `f_title_has_outbreak_kw`, `f_title_word_count`, `f_pub_quarter`, `f_title_has_us_kw`, `target_t72h`).
+- Add a backend scoring write path that persists model outputs in `ml_risk_snapshot.payload_json` using the same feature names and output keys consumed by `recommend_response_agent`.
+- Keep recommendation generation contract stable: recommendation stage reads `snapshot_ref_id` + `enrichment_run_id`, optionally `ml_snapshot_id`, and writes `recommendation_response`.
+- Defer robustness hardening; focus on a feature-only path that can run manually and then be called in pipeline/runtime.
+
+## ML-To-Backend Contract Sequence (Mermaid)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Analyst as ml/notebooks/initial_train_dataset.ipynb
+    participant MLScripts as ml/scripts/*
+    participant Artifacts as ml/data/processed + ml/models
+    participant BackendScore as backend/app/pipeline/stages/score_snapshot.py
+    participant DB as backend/app/models/entities.py (ml_risk_snapshot)
+    participant Recommend as backend/app/pipeline/stages/recommend_response_agent.py
+
+    Analyst->>MLScripts: run X load + Y fetch + preprocess + double lasso
+    MLScripts->>Artifacts: write slim parquet + model summary/params
+    BackendScore->>Artifacts: load selected model metadata + feature map
+    BackendScore->>DB: insert MlRiskSnapshot(snapshot_ref_id, model_name, model_version, payload_json)
+    BackendScore-->>Recommend: artifact ml_snapshot_id (or latest by snapshot_ref_id)
+    Recommend->>DB: insert RecommendationResponse with ml_snapshot_id and response payload
+```
+
+## Runtime Inference Sequence (Mermaid)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant API as /pipeline/run
+    participant Runner as backend/app/pipeline/runner/pipeline_runner.py
+    participant Ingest as ingest_snapshot
+    participant Enrich as enrich_snapshot_agent
+    participant Score as score_snapshot
+    participant Recommend as recommend_response_agent
+    participant DB as App DB
+
+    API->>Runner: start pipeline_full_v1
+    Runner->>Ingest: run
+    Ingest->>DB: write IndicatorSnapshot rows scoped by snapshot_ref_id
+    Runner->>Enrich: run
+    Enrich->>DB: write enrichment_run
+    Runner->>Score: run (features from snapshot scope)
+    Score->>DB: write MlRiskSnapshot(payload_json.model_output/confidence/features)
+    Runner->>Recommend: run with snapshot_ref_id + enrichment_run_id (+ml_snapshot_id)
+    Recommend->>DB: write RecommendationResponse(response_json, citations_json)
+```
+
+## Failure Path Sequence (Mermaid)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Score as score_snapshot
+    participant Recommend as recommend_response_agent
+    participant Agent as RecommendationAgentRunner
+    participant DB as App DB
+
+    Score->>DB: attempt MlRiskSnapshot write
+    alt scoring contract mismatch or missing model artifact
+        Score-->>Recommend: no ml_snapshot_id artifact
+        Recommend->>Agent: run(..., ml_snapshot_id=None)
+        Agent->>DB: fallback MlRiskSnapshot(model_name=double_lasso_stub, model_version=v0)
+        Agent->>DB: write RecommendationResponse with fallback provenance
+    else scoring succeeds
+        Recommend->>Agent: run(..., ml_snapshot_id=<id>)
+        Agent->>DB: write RecommendationResponse bound to scored snapshot
+    end
+```
+
+## Implementation Notes
+
+- Current recommendation stage contract is already compatible with explicit scoring output because `ml_snapshot_id` is optional and `snapshot_ref_id` lookup remains authoritative.
+- `MlRiskSnapshot.payload_json` should remain the stable integration envelope between `ml/` and backend runtime:
+  - `model_output.risk_value`, `model_output.risk_band`
+  - `confidence.band`, `confidence.score`
+  - `features.<feature_name>` for selected online features
+  - `ates` (optional; can stay empty for initial demo)
+- For manual-first experiments, produce processed artifacts in `ml/data/processed` and load model coefficients/feature list into backend scoring without changing recommendation response schema.
+- To keep train/inference compatible, use identical feature names in both `ml/scripts/preprocess_xy_polars.py` and backend score feature derivation.
+
+## Next Feature Slices
+
+- Slice 1: finalize slim feature contract file in `ml/` (selected 5 X features + target) and version it.
+- Slice 2: make `score_snapshot` read that contract and persist `MlRiskSnapshot` with explicit model provenance.
+- Slice 3: remove implicit fallback usage from normal path by requiring score stage success before recommendation in pipeline config.
+- Slice 4: add dataset split artifacts (train/val/test manifests) so offline evaluation and backend inference use the same schema boundary.
