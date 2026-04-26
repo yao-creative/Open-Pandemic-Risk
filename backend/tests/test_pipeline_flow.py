@@ -98,9 +98,17 @@ def test_pipeline_run_happy_path(client: TestClient, monkeypatch: pytest.MonkeyP
         "insufficient_evidence",
     }
     assert payload["artifacts"]["confidence"] in {"high", "medium", "low", "unknown"}
+    assert payload["artifacts"]["risk_band"] in {"critical", "high", "medium", "low", "unknown"}
+    assert isinstance(payload["artifacts"]["risk_value"], float)
     assert isinstance(payload["artifacts"]["citations"], list)
-    assert "risk_band" not in payload["artifacts"]
-    assert "risk_value" not in payload["artifacts"]
+    report = payload["artifacts"]["report"]
+    assert isinstance(report, dict)
+    assert isinstance(report["risk_analytics"], dict)
+    assert isinstance(report["recommendation"], dict)
+    assert isinstance(report["evidence"], list)
+    assert report["risk_analytics"]["risk_band"] == payload["artifacts"]["risk_band"]
+    assert report["recommendation"]["recommendation_level"] == payload["artifacts"]["recommendation_level"]
+    assert report["recommendation"]["response_text"] == payload["artifacts"]["response_text"]
 
     events_resp = client.get(f"/pipeline/runs/{pipeline_run_id}/events")
     assert events_resp.status_code == 200

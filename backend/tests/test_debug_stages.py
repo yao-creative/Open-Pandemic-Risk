@@ -8,7 +8,7 @@ import pytest
 
 from app import db as db_module
 from app import settings as settings_module
-from app.models import EnrichmentRun, IndicatorSnapshot, PipelineRun, SourceRegistry
+from app.models import EnrichmentRun, IndicatorSnapshot, MlRiskSnapshot, PipelineRun, SourceRegistry
 
 
 class _FakeGetResponse:
@@ -150,13 +150,32 @@ def test_debug_recommend_stage_uses_snapshot_payload(client: TestClient):
             error_summary=None,
         )
         db.add(enrich_run)
+        ml_snapshot = MlRiskSnapshot(
+            snapshot_ref_id=snapshot_run.id,
+            model_name="double_lasso_stub",
+            model_version="v-test",
+            payload_json={
+                "model_output": {"risk_value": 0.82, "risk_band": "critical"},
+                "confidence": {"band": "high", "score": 0.9},
+                "ates": {"travel_control": -0.07},
+                "features": {"signal_count": 2, "mean_value": 47.5, "max_value": 90.0},
+            },
+            created_at=datetime.now(tz=UTC),
+            updated_at=datetime.now(tz=UTC),
+        )
+        db.add(ml_snapshot)
         db.commit()
         snapshot_ref_id = snapshot_run.id
         enrichment_run_id = enrich_run.id
+        ml_snapshot_id = ml_snapshot.id
 
     resp = client.post(
         "/debug/stages/recommend_response_agent/run",
-        json={"snapshot_ref_id": snapshot_ref_id, "enrichment_run_id": enrichment_run_id},
+        json={
+            "snapshot_ref_id": snapshot_ref_id,
+            "enrichment_run_id": enrichment_run_id,
+            "ml_snapshot_id": ml_snapshot_id,
+        },
     )
     assert resp.status_code == 200
     payload = resp.json()
@@ -168,3 +187,10 @@ def test_debug_recommend_stage_uses_snapshot_payload(client: TestClient):
         "insufficient_evidence",
     }
     assert isinstance(payload["artifacts"]["citations"], list)
+    assert payload["artifacts"]["risk_band"] == "critical"
+    assert payload["artifacts"]["risk_value"] == pytest.approx(0.82)
+    assert payload["artifacts"]["report"]["risk_analytics"]["confidence_score"] == pytest.approx(0.9)
+    assert payload["artifacts"]["report"]["risk_analytics"]["ate_summary"] == {
+        "count": 1,
+        "keys": ["travel_control"],
+    }

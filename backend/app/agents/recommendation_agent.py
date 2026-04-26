@@ -16,7 +16,11 @@ class RecommendationAgentResult:
     recommendation_response_id: int
     recommendation_level: str
     confidence: str
+    confidence_score: float | None
     response_text: str
+    risk_value: float | None
+    risk_band: str
+    risk_analytics: dict[str, Any]
     citations: list[dict[str, Any]]
 
 
@@ -81,12 +85,51 @@ class RecommendationAgentRunner:
         db.refresh(row)
         return row
 
-    def _draft_response(self, *, snapshot_ref_id: int, payload: dict[str, Any]) -> tuple[str, str, str, list[dict[str, Any]]]:
+    def _extract_risk_analytics(self, payload: dict[str, Any]) -> dict[str, Any]:
         model_output = payload.get("model_output") or {}
         confidence_payload = payload.get("confidence") or {}
         features = payload.get("features") or {}
+        ates = payload.get("ates") if isinstance(payload.get("ates"), dict) else {}
+
+        risk_value_raw = model_output.get("risk_value")
+        risk_value = float(risk_value_raw) if isinstance(risk_value_raw, (int, float)) else None
         risk_band = str(model_output.get("risk_band") or "unknown")
         confidence = str(confidence_payload.get("band") or "unknown")
+        confidence_score_raw = confidence_payload.get("score")
+        confidence_score = (
+            float(confidence_score_raw) if isinstance(confidence_score_raw, (int, float)) else None
+        )
+        signal_count = int(features.get("signal_count") or 0)
+        mean_value = float(features.get("mean_value") or 0.0)
+        max_value = float(features.get("max_value") or 0.0)
+
+        top_features = [
+            {"name": "signal_count", "value": signal_count},
+            {"name": "mean_value", "value": mean_value},
+            {"name": "max_value", "value": max_value},
+        ]
+        ate_summary = {"count": len(ates), "keys": sorted(ates.keys())}
+        return {
+            "risk_value": risk_value,
+            "risk_band": risk_band,
+            "confidence_band": confidence,
+            "confidence_score": confidence_score,
+            "top_features": top_features,
+            "ate_summary": ate_summary,
+        }
+
+    def _draft_response(
+        self,
+        *,
+        snapshot_ref_id: int,
+        payload: dict[str, Any],
+    ) -> tuple[str, str, float | None, str, float | None, str, dict[str, Any], list[dict[str, Any]]]:
+        analytics = self._extract_risk_analytics(payload)
+        risk_band = str(analytics.get("risk_band") or "unknown")
+        confidence = str(analytics.get("confidence_band") or "unknown")
+        confidence_score = analytics.get("confidence_score")
+        risk_value = analytics.get("risk_value")
+        features = payload.get("features") or {}
         signal_count = int(features.get("signal_count") or 0)
         mean_value = float(features.get("mean_value") or 0.0)
 
@@ -129,7 +172,16 @@ class RecommendationAgentRunner:
                 "value": signal_count,
             },
         ]
-        return recommendation_level, confidence, response_text, citations
+        return (
+            recommendation_level,
+            confidence,
+            confidence_score if isinstance(confidence_score, float) else None,
+            response_text,
+            risk_value if isinstance(risk_value, float) else None,
+            risk_band,
+            analytics,
+            citations,
+        )
 
     def run(
         self,
@@ -142,7 +194,7 @@ class RecommendationAgentRunner:
     ) -> RecommendationAgentResult:
         ml_snapshot = self._ensure_ml_snapshot(db, snapshot_ref_id=snapshot_ref_id, ml_snapshot_id=ml_snapshot_id)
         payload = ml_snapshot.payload_json if isinstance(ml_snapshot.payload_json, dict) else {}
-        recommendation_level, confidence, response_text, citations = self._draft_response(
+        recommendation_level, confidence, confidence_score, response_text, risk_value, risk_band, risk_analytics, citations = self._draft_response(
             snapshot_ref_id=snapshot_ref_id,
             payload=payload,
         )
@@ -174,6 +226,10 @@ class RecommendationAgentRunner:
             recommendation_response_id=row.id,
             recommendation_level=recommendation_level,
             confidence=confidence,
+            confidence_score=confidence_score,
             response_text=response_text,
+            risk_value=risk_value,
+            risk_band=risk_band,
+            risk_analytics=risk_analytics,
             citations=citations,
         )

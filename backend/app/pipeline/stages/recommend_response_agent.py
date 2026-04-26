@@ -32,6 +32,16 @@ class RecommendResponseAgentStage(PipelineStage):
             enrichment_run_id=enrichment_run_id,
             ml_snapshot_id=int(ml_snapshot_id) if ml_snapshot_id is not None else None,
         )
+        report = {
+            "risk_analytics": result.risk_analytics,
+            "recommendation": {
+                "recommendation_level": result.recommendation_level,
+                "response_text": result.response_text,
+                "confidence": result.confidence_score if result.confidence_score is not None else result.confidence,
+                "confidence_band": result.confidence,
+            },
+            "evidence": result.citations,
+        }
         return StageResult(
             status="ok",
             metrics={"records_in": 1, "records_ok": 1, "records_failed": 0},
@@ -40,7 +50,10 @@ class RecommendResponseAgentStage(PipelineStage):
                 "recommendation_level": result.recommendation_level,
                 "confidence": result.confidence,
                 "response_text": result.response_text,
+                "risk_value": result.risk_value,
+                "risk_band": result.risk_band,
                 "citations": result.citations,
+                "report": report,
             },
             error=None,
         )
