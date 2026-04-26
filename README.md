@@ -32,6 +32,10 @@ The canonical runtime flow is:
 3. Evaluate Risk: `score_snapshot` (double lasso artifact contract)
 4. Recommend Next Steps: `recommend_response_agent`
 
+## Dashboard Preview
+
+![Image #1](assets/image.png)
+
 ### Pipeline Orchestration
 
 - Endpoint: `POST /pipeline/run`
@@ -250,4 +254,3 @@ Other targets:
 - Connect enrichment NLP data to double lasso/ double ml risk evaluation
 - Semantic IDs or Generative recommendation systems fine tuned for decision making / policy align ment
 - Intergrate other verifiable sources such as HealthMap and ProMED into Alert stage data.
-
