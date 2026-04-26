@@ -86,10 +86,11 @@ def test_pipeline_run_happy_path(client: TestClient, monkeypatch: pytest.MonkeyP
     assert payload["status"] == "completed"
     assert payload["pipeline_name"] == "pipeline_full_v1"
     stage_names = [item["stage_name"] for item in payload["stage_runs"]]
-    assert stage_names == ["ingest_snapshot", "enrich_snapshot_agent", "recommend_response_agent"]
+    assert stage_names == ["ingest_snapshot", "enrich_snapshot_agent", "score_snapshot", "recommend_response_agent"]
     assert all(item["status"] == "completed" for item in payload["stage_runs"])
     assert payload["artifacts"]["snapshot_ref_id"] > 0
     assert payload["artifacts"]["enrichment_run_id"] > 0
+    assert payload["artifacts"]["ml_snapshot_id"] > 0
     assert payload["artifacts"]["recommendation_response_id"] > 0
     assert payload["artifacts"]["recommendation_level"] in {
         "urgent_response",
@@ -120,7 +121,7 @@ def test_pipeline_run_happy_path(client: TestClient, monkeypatch: pytest.MonkeyP
         stage_rows = db.execute(
             select(PipelineStageRun).where(PipelineStageRun.pipeline_run_id == pipeline_run_id)
         ).scalars().all()
-        assert len(stage_rows) == 3
+        assert len(stage_rows) == 4
         responses = db.execute(select(RecommendationResponse).order_by(RecommendationResponse.id.desc())).scalars().all()
         assert len(responses) >= 1
         ml_snapshots = db.execute(select(MlRiskSnapshot).order_by(MlRiskSnapshot.id.desc())).scalars().all()

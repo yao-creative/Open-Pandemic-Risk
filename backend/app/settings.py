@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -27,6 +28,9 @@ class Settings(BaseSettings):
     agent_max_targets: int = 5
     agent_max_exa_calls: int = 5
     agent_snapshot_context_limit: int = 20
+    ml_model_pickle_path: str = str(Path("ml/models/double_lasso_model.pkl"))
+    ml_scaler_pickle_path: str = str(Path("ml/models/double_lasso_scaler.pkl"))
+    ml_model_manifest_path: str = str(Path("ml/models/double_lasso_manifest.json"))
 
 
 @lru_cache

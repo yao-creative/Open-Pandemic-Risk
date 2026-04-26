@@ -1,0 +1,17 @@
+{
+  "model_name": "double_lasso_linear",
+  "model_version": "v1",
+  "target_name": "target_t72h",
+  "feature_order": [
+    "f_title_has_us_kw",
+    "f_case_accel",
+    "f_pub_quarter",
+    "f_title_has_outbreak_kw",
+    "f_title_topic_code",
+    "f_title_word_count"
+  ],
+  "artifact_paths": {
+    "model_pickle": "ml/models/double_lasso_model.pkl",
+    "scaler_pickle": "ml/models/double_lasso_scaler.pkl"
+  }
+}

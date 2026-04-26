@@ -23,7 +23,9 @@ class RecommendResponseAgentStage(PipelineStage):
     def run(self, context: StageContext) -> StageResult:
         snapshot_ref_id = int(context.artifacts["snapshot_ref_id"])
         enrichment_run_id = int(context.artifacts["enrichment_run_id"])
-        ml_snapshot_id = context.params.get("ml_snapshot_id")
+        ml_snapshot_id = context.artifacts.get("ml_snapshot_id")
+        if ml_snapshot_id is None:
+            ml_snapshot_id = context.params.get("ml_snapshot_id")
         runner = RecommendationAgentRunner()
         result = runner.run(
             context.db,

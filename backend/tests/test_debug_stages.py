@@ -52,7 +52,7 @@ def test_debug_stage_catalog_and_validation(client: TestClient):
     catalog = client.get("/debug/stages")
     assert catalog.status_code == 200
     names = [item["name"] for item in catalog.json()["stages"]]
-    assert names == ["ingest_snapshot", "enrich_snapshot_agent", "recommend_response_agent"]
+    assert names == ["ingest_snapshot", "enrich_snapshot_agent", "score_snapshot", "recommend_response_agent"]
 
     invalid = client.post("/debug/stages/enrich_snapshot_agent/validate", json={})
     assert invalid.status_code == 200
