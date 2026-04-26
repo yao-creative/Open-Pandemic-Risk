@@ -267,6 +267,7 @@ class AgentRunner:
         if run.status not in {"queued", "running"}:
             return
 
+        # Stage 0: materialize bounded runner state from the persisted run row.
         state = AgentState(
             enrichment_run_id=run.id,
             pipeline_run_id=run.pipeline_run_id,
@@ -278,12 +279,14 @@ class AgentRunner:
             exa_calls_used=run.exa_calls_used,
         )
 
+        # Stage 1: transition run to active execution.
         run.status = "running"
         run.started_at = run.started_at or datetime.now(tz=UTC)
         run.updated_at = datetime.now(tz=UTC)
         db.commit()
 
         try:
+            # Stage 2: build snapshot context and persist the context dump.
             context = self._run_tool(db, state, self.read_context_tool, {})
             state.steps_used += 1
             run.snapshot_ref_id = state.snapshot_ref_id
@@ -291,12 +294,14 @@ class AgentRunner:
             run.updated_at = datetime.now(tz=UTC)
             db.commit()
 
+            # Stage 3: choose enrichment targets from the context.
             target_payload = self._run_tool(db, state, self.select_targets_tool, {"context": context})
             state.steps_used += 1
             run.steps_used = state.steps_used
             run.updated_at = datetime.now(tz=UTC)
             db.commit()
 
+            # Stage 4: bounded multi-turn enrichment loop (search + persist).
             for target in target_payload["targets"]:
                 if state.steps_used >= state.max_steps:
                     break
@@ -322,6 +327,7 @@ class AgentRunner:
                 run.updated_at = datetime.now(tz=UTC)
                 db.commit()
 
+            # Stage 5: synthesize and persist final report, then complete run.
             self._run_tool(db, state, self.persist_report_tool, {})
             state.steps_used += 1
             run.steps_used = state.steps_used
@@ -332,6 +338,7 @@ class AgentRunner:
             run.error_summary = None
             db.commit()
         except Exception as exc:
+            # Stage F: terminal failure path with persisted error summary.
             run.steps_used = state.steps_used
             run.exa_calls_used = state.exa_calls_used
             run.status = "failed"
