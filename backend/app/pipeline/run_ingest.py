@@ -155,6 +155,8 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
     )
     db.add(pipeline_run)
     db.flush()
+    pipeline_run_id = pipeline_run.id
+    db.commit()
 
     base = settings.who_odata_base_url.rstrip("/")
     code_results: list[CodeRunResult] = []
@@ -162,16 +164,18 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
     for item in profile_codes:
         url = f"{base}/{item.code}"
         try:
-            with db.begin_nested():
-                stats = ingest_who_odata(
-                    db,
-                    url=url,
-                    timeout_seconds=settings.ingest_http_timeout_seconds,
-                    item_limit=settings.ingest_who_item_limit,
-                    profile_name=profile_name,
-                    profile_category=item.category,
-                    snapshot_ref_id=pipeline_run.id,
-                )
+            stats = ingest_who_odata(
+                db,
+                url=url,
+                timeout_seconds=settings.ingest_http_timeout_seconds,
+                item_limit=settings.ingest_who_item_limit,
+                profile_name=profile_name,
+                profile_category=item.category,
+                indicator_label=item.label,
+                risk_direction=item.risk_direction,
+                snapshot_ref_id=pipeline_run_id,
+            )
+            db.commit()
             code_results.append(
                 CodeRunResult(
                     code=item.code,
@@ -185,7 +189,7 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
                 )
             )
         except Exception as exc:
-            # begin_nested() already rolled back this code's savepoint; keep outer transaction active
+            db.rollback()
             code_results.append(
                 CodeRunResult(
                     code=item.code,

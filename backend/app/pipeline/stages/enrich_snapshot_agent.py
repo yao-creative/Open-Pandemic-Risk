@@ -25,6 +25,27 @@ class EnrichSnapshotAgentStage(PipelineStage):
         return StageValidationResult(valid=True)
 
     def run(self, context: StageContext) -> StageResult:
+        if not context.settings.enrichment_enabled:
+            return StageResult(
+                status="ok",
+                metrics={"skipped": True, "reason": "enrichment disabled"},
+                artifacts={
+                    "enrichment_run_id": None,
+                    "enrichment_pipeline_run_id": None,
+                    "enrichment_status": "skipped",
+                },
+            )
+        if not context.settings.exa_api_key:
+            return StageResult(
+                status="ok",
+                metrics={"skipped": True, "reason": "missing exa_api_key"},
+                artifacts={
+                    "enrichment_run_id": None,
+                    "enrichment_pipeline_run_id": None,
+                    "enrichment_status": "skipped",
+                },
+            )
+
         now = datetime.now(tz=UTC)
         snapshot_ref_id = int(context.artifacts["snapshot_ref_id"])
         max_steps = int(context.params.get("max_steps") or context.settings.agent_max_steps)
@@ -81,10 +102,12 @@ class EnrichSnapshotAgentStage(PipelineStage):
             metrics={
                 "steps_used": latest_run.steps_used,
                 "exa_calls_used": latest_run.exa_calls_used,
+                "skipped": False,
             },
             artifacts={
                 "enrichment_run_id": latest_run.id,
                 "enrichment_pipeline_run_id": latest_run.pipeline_run_id,
+                "enrichment_status": latest_run.status,
             },
             error=latest_run.error_summary if status != "ok" else None,
         )

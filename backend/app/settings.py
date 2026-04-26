@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str = "sqlite:///./app.db"
+    sqlite_busy_timeout_seconds: float = 30.0
+    sqlite_enable_wal: bool = True
+    log_level: str = "INFO"
+    enrichment_enabled: bool = True
 
     azure_openai_endpoint: str | None = None
     azure_openai_api_key: str | None = None

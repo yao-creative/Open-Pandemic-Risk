@@ -86,6 +86,38 @@ class IndicatorSnapshot(Base):
     dim_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
+class WhoObservation(Base):
+    __tablename__ = "who_observation"
+    __table_args__ = (
+        UniqueConstraint(
+            "pipeline_run_id",
+            "indicator_code",
+            "country_code",
+            "period_date",
+            "dimension_key",
+            name="uq_who_observation_run_indicator_country_period_dim",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pipeline_run_id: Mapped[int] = mapped_column(ForeignKey("pipeline_run.id"), index=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("source_registry.id"), index=True)
+    indicator_code: Mapped[str] = mapped_column(String(64), index=True)
+    indicator_label: Mapped[str] = mapped_column(String(256))
+    factor_group: Mapped[str] = mapped_column(String(64), index=True)
+    risk_direction: Mapped[str] = mapped_column(String(32))
+    country_code: Mapped[str] = mapped_column(String(16), index=True)
+    spatial_dim_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    period_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    source_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    numeric_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    low_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    high_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    display_value: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    dimension_key: Mapped[str] = mapped_column(String(256), default="", index=True)
+    dimension_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
 class RiskScore(Base):
     __tablename__ = "risk_score"
 
@@ -187,6 +219,25 @@ class PipelineRunScore(Base):
     risk_band: Mapped[str] = mapped_column(String(16))
     factors_json: Mapped[dict] = mapped_column(JSON)
     model_version: Mapped[str] = mapped_column(String(32), default="deterministic-v1")
+
+
+class CountryRiskResult(Base):
+    __tablename__ = "country_risk_result"
+    __table_args__ = (
+        UniqueConstraint("pipeline_run_id", "country_code", name="uq_country_risk_result_run_country"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pipeline_run_id: Mapped[int] = mapped_column(ForeignKey("pipeline_run.id"), index=True)
+    country_code: Mapped[str] = mapped_column(String(16), index=True)
+    scored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    risk_score: Mapped[float] = mapped_column(Float)
+    risk_band: Mapped[str] = mapped_column(String(16), index=True)
+    disease_burden_score: Mapped[float] = mapped_column(Float)
+    surveillance_readiness_score: Mapped[float] = mapped_column(Float)
+    confidence_score: Mapped[float] = mapped_column(Float)
+    factors_json: Mapped[dict] = mapped_column(JSON)
+    model_version: Mapped[str] = mapped_column(String(32), default="country-risk-v1")
 
 
 class EnrichmentRun(Base):

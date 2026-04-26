@@ -16,6 +16,68 @@ class PipelineRunCreateResponse(BaseModel):
     stage_order: list[str]
 
 
+class ContributorSchema(BaseModel):
+    indicator_code: str
+    indicator_label: str | None = None
+    factor_group: str
+    risk_direction: str | None = None
+    raw_value: float | None = None
+    normalized_risk: float | None = None
+    contribution_score: float | None = None
+    period_date: str | None = None
+    source_date: str | None = None
+
+
+class FactorScoreSchema(BaseModel):
+    score: float
+    indicator_count: int | None = None
+    expected_indicator_count: int | None = None
+    indicator_coverage: float | None = None
+    freshness_score: float | None = None
+    uncertainty_quality: float | None = None
+
+
+class CountryRiskRowSchema(BaseModel):
+    country_code: str
+    risk_score: float
+    risk_band: str
+    disease_burden_score: float
+    surveillance_readiness_score: float
+    confidence_score: float
+    top_contributors: list[ContributorSchema]
+
+
+class CountryRiskDetailSchema(BaseModel):
+    country_code: str
+    risk_score: float
+    risk_band: str
+    disease_burden_score: float
+    surveillance_readiness_score: float
+    confidence_score: float
+    factors: dict[str, FactorScoreSchema]
+    top_contributors: list[ContributorSchema]
+    indicator_details: list[ContributorSchema]
+    model_version: str
+
+
+class PipelineCountryResultsResponse(BaseModel):
+    pipeline_run_id: int
+    pipeline_name: str
+    status: str
+    finished_at: datetime | None
+    countries_ranked: int
+    model_version: str | None
+    countries: list[CountryRiskRowSchema]
+
+
+class PipelineCountryDetailResponse(BaseModel):
+    pipeline_run_id: int
+    pipeline_name: str
+    status: str
+    finished_at: datetime | None
+    country: CountryRiskDetailSchema
+
+
 class PipelineStageRunSchema(BaseModel):
     id: int
     stage_name: str

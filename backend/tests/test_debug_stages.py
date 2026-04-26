@@ -8,7 +8,7 @@ import pytest
 
 from app import db as db_module
 from app import settings as settings_module
-from app.models import IndicatorSnapshot, PipelineRun, SourceRegistry
+from app.models import CountryRiskResult, PipelineRun, SourceRegistry, WhoObservation
 
 
 class _FakeGetResponse:
@@ -85,23 +85,41 @@ def test_debug_score_stage_scopes_snapshot_rows(client: TestClient):
         db.flush()
         db.add_all(
             [
-                IndicatorSnapshot(
+                WhoObservation(
+                    pipeline_run_id=111,
                     source_id=source.id,
-                    indicator_code="A",
+                    indicator_code="MDG_0000000020",
+                    indicator_label="TB incidence",
+                    factor_group="disease_burden",
+                    risk_direction="higher_is_worse",
                     country_code="MYS",
+                    spatial_dim_type="COUNTRY",
                     period_date=datetime(2024, 1, 1, tzinfo=UTC),
-                    value=90.0,
-                    unit="x",
-                    dim_json={"_snapshot_ref_id": 111},
+                    source_date=datetime(2024, 6, 1, tzinfo=UTC),
+                    numeric_value=90.0,
+                    low_value=70.0,
+                    high_value=110.0,
+                    display_value="90",
+                    dimension_key="",
+                    dimension_json={},
                 ),
-                IndicatorSnapshot(
+                WhoObservation(
+                    pipeline_run_id=222,
                     source_id=source.id,
-                    indicator_code="B",
+                    indicator_code="MDG_0000000020",
+                    indicator_label="TB incidence",
+                    factor_group="disease_burden",
+                    risk_direction="higher_is_worse",
                     country_code="THA",
+                    spatial_dim_type="COUNTRY",
                     period_date=datetime(2024, 1, 1, tzinfo=UTC),
-                    value=5.0,
-                    unit="x",
-                    dim_json={"_snapshot_ref_id": 222},
+                    source_date=datetime(2024, 6, 1, tzinfo=UTC),
+                    numeric_value=5.0,
+                    low_value=4.0,
+                    high_value=6.0,
+                    display_value="5",
+                    dimension_key="",
+                    dimension_json={},
                 ),
             ]
         )
@@ -129,3 +147,8 @@ def test_debug_score_stage_scopes_snapshot_rows(client: TestClient):
     payload = resp.json()
     assert payload["status"] == "ok"
     assert payload["metrics"]["records_in"] == 1
+    assert payload["artifacts"]["countries_ranked"] == 1
+    with db_module.get_session_local()() as db:
+        rows = db.query(CountryRiskResult).all()
+        assert len(rows) == 1
+        assert rows[0].country_code == "MYS"

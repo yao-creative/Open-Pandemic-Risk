@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -19,6 +20,7 @@ from app.schemas import (
 from app.settings import get_settings
 
 router = APIRouter(prefix="/debug/stages", tags=["debug-stages"])
+logger = logging.getLogger("biohack.debug-stages")
 
 
 def _build_context(db: Session, stage_name: str, payload: DebugStageRunRequest) -> StageContext:
@@ -55,11 +57,13 @@ def validate_stage(
     payload: DebugStageRunRequest,
     db: Session = Depends(get_db_session),
 ) -> DebugStageValidationResponse:
+    logger.info("debug_stage_validate_requested stage=%s payload=%s", stage_name, payload.model_dump(exclude_none=True))
     stage = StageRegistry().get(stage_name)
     if stage is None:
         raise HTTPException(status_code=404, detail=f"unknown stage: {stage_name}")
     context = _build_context(db, stage_name, payload)
     validation = stage.validate(context)
+    logger.info("debug_stage_validate_result stage=%s valid=%s errors=%s", stage_name, validation.valid, validation.errors)
     return DebugStageValidationResponse(stage=stage_name, valid=validation.valid, errors=validation.errors)
 
 
@@ -69,6 +73,7 @@ def run_stage(
     payload: DebugStageRunRequest,
     db: Session = Depends(get_db_session),
 ) -> DebugStageRunResponse:
+    logger.info("debug_stage_run_requested stage=%s payload=%s", stage_name, payload.model_dump(exclude_none=True))
     stage = StageRegistry().get(stage_name)
     if stage is None:
         raise HTTPException(status_code=404, detail=f"unknown stage: {stage_name}")
@@ -97,6 +102,7 @@ def run_stage(
         db.commit()
 
     result = stage.run(context)
+    logger.info("debug_stage_run_result stage=%s status=%s error=%s", stage_name, result.status, result.error)
     return DebugStageRunResponse(
         stage=stage_name,
         status=result.status,
