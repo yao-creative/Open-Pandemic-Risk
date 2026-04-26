@@ -159,3 +159,54 @@ class PipelineRunScore(Base):
     risk_band: Mapped[str] = mapped_column(String(16))
     factors_json: Mapped[dict] = mapped_column(JSON)
     model_version: Mapped[str] = mapped_column(String(32), default="deterministic-v1")
+
+
+class EnrichmentRun(Base):
+    __tablename__ = "enrichment_run"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pipeline_run_id: Mapped[int] = mapped_column(ForeignKey("pipeline_run.id"), index=True)
+    snapshot_ref_id: Mapped[int | None] = mapped_column(ForeignKey("pipeline_run.id"), nullable=True, index=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    max_steps: Mapped[int] = mapped_column(Integer, default=10)
+    max_targets: Mapped[int] = mapped_column(Integer, default=5)
+    max_exa_calls: Mapped[int] = mapped_column(Integer, default=5)
+    steps_used: Mapped[int] = mapped_column(Integer, default=0)
+    exa_calls_used: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    error_summary: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+
+
+class ContextDump(Base):
+    __tablename__ = "context_dump"
+    __table_args__ = (UniqueConstraint("enrichment_run_id", name="uq_context_dump_run"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    enrichment_run_id: Mapped[int] = mapped_column(ForeignKey("enrichment_run.id"), index=True)
+    context_json: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class EnrichmentFinding(Base):
+    __tablename__ = "enrichment_finding"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    enrichment_run_id: Mapped[int] = mapped_column(ForeignKey("enrichment_run.id"), index=True)
+    target_key: Mapped[str] = mapped_column(String(128), index=True)
+    query: Mapped[str] = mapped_column(String(512))
+    finding_json: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class EnrichmentReport(Base):
+    __tablename__ = "enrichment_report"
+    __table_args__ = (UniqueConstraint("enrichment_run_id", name="uq_enrichment_report_run"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    enrichment_run_id: Mapped[int] = mapped_column(ForeignKey("enrichment_run.id"), index=True)
+    summary_json: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
