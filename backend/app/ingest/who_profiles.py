@@ -10,38 +10,77 @@ WHO_SURVEILLANCE_MVP_V1 = "who_surveillance_mvp_v1"
 class WhoProfileCode:
     code: str
     category: str
+    label: str
+    risk_direction: str
 
 
 def get_who_surveillance_profile() -> tuple[str, list[WhoProfileCode]]:
     codes = [
-        WhoProfileCode("IHR03", "surveillance_capacity"),
-        WhoProfileCode("IHR04", "surveillance_capacity"),
-        WhoProfileCode("IHR05", "surveillance_capacity"),
-        WhoProfileCode("IHR06", "surveillance_capacity"),
-        WhoProfileCode("IHR08", "surveillance_capacity"),
-        WhoProfileCode("IHR10", "surveillance_capacity"),
-        WhoProfileCode("SDGIHR2021", "surveillance_capacity"),
-        WhoProfileCode("WHS3_62", "event_signals"),
-        WhoProfileCode("WHS3_51", "event_signals"),
-        WhoProfileCode("WHS3_47", "event_signals"),
-        WhoProfileCode("WHS3_48", "event_signals"),
-        WhoProfileCode("WHS3_54", "event_signals"),
-        WhoProfileCode("CHOLERA_0000000001", "event_signals"),
-        WhoProfileCode("MDG_0000000020", "event_signals"),
-        WhoProfileCode("TB_e_inc_num", "event_signals"),
-        WhoProfileCode("MALARIA_EST_INCIDENCE", "event_signals"),
-        WhoProfileCode("MALARIA_EST_DEATHS", "event_signals"),
-        WhoProfileCode("HIV_0000000026", "event_signals"),
-        WhoProfileCode("HEPATITIS_HBV_PREVALENCE_PER100", "event_signals"),
-        WhoProfileCode("AMRGLASS_SURVL01", "risk_modifiers"),
-        WhoProfileCode("AMRGLASS_SURVL02", "risk_modifiers"),
-        WhoProfileCode("AMRGLASS_SURVL03", "risk_modifiers"),
-        WhoProfileCode("AMRGLASS_COORD01", "risk_modifiers"),
-        WhoProfileCode("WHS8_110", "risk_modifiers"),
-        WhoProfileCode("MCV2", "risk_modifiers"),
-        WhoProfileCode("WHS4_117", "risk_modifiers"),
-        WhoProfileCode("WHS4_544", "risk_modifiers"),
-        WhoProfileCode("dptv", "risk_modifiers"),
-        WhoProfileCode("fullv", "risk_modifiers"),
+        WhoProfileCode(
+            "SDGIHR2021",
+            "surveillance_readiness",
+            "SPAR core capacity score",
+            "higher_is_better",
+        ),
+        WhoProfileCode(
+            "WHS8_110",
+            "surveillance_readiness",
+            "MCV1 immunization coverage",
+            "higher_is_better",
+        ),
+        WhoProfileCode(
+            "MCV2",
+            "surveillance_readiness",
+            "MCV2 immunization coverage",
+            "higher_is_better",
+        ),
+        WhoProfileCode(
+            "WHS4_117",
+            "surveillance_readiness",
+            "HepB3 immunization coverage",
+            "higher_is_better",
+        ),
+        WhoProfileCode(
+            "WHS4_544",
+            "surveillance_readiness",
+            "Pol3 immunization coverage",
+            "higher_is_better",
+        ),
+        WhoProfileCode(
+            "MDG_0000000020",
+            "disease_burden",
+            "TB incidence per 100,000",
+            "higher_is_worse",
+        ),
+        WhoProfileCode(
+            "TB_e_inc_num",
+            "disease_burden",
+            "Incident tuberculosis cases",
+            "higher_is_worse",
+        ),
+        WhoProfileCode(
+            "MALARIA_EST_INCIDENCE",
+            "disease_burden",
+            "Estimated malaria incidence",
+            "higher_is_worse",
+        ),
+        WhoProfileCode(
+            "MALARIA_EST_DEATHS",
+            "disease_burden",
+            "Estimated malaria deaths",
+            "higher_is_worse",
+        ),
+        WhoProfileCode(
+            "HEPATITIS_HBV_PREVALENCE_PER100",
+            "disease_burden",
+            "Chronic hepatitis B prevalence",
+            "higher_is_worse",
+        ),
+        WhoProfileCode(
+            "WHS3_62",
+            "disease_burden",
+            "Reported measles cases",
+            "higher_is_worse",
+        ),
     ]
     return WHO_SURVEILLANCE_MVP_V1, codes

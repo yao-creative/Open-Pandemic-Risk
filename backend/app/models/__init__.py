@@ -3,6 +3,7 @@ from .entities import (
     AgentToolAudit,
     Alert,
     CanonicalEvent,
+    CountryRiskResult,
     ContextDump,
     EnrichmentFinding,
     EnrichmentReport,
@@ -17,6 +18,7 @@ from .entities import (
     RawIngestEvent,
     RiskScore,
     SourceRegistry,
+    WhoObservation,
 )
 
 __all__ = [
@@ -24,6 +26,7 @@ __all__ = [
     "Alert",
     "Base",
     "CanonicalEvent",
+    "CountryRiskResult",
     "ContextDump",
     "EnrichmentFinding",
     "EnrichmentReport",
@@ -38,4 +41,5 @@ __all__ = [
     "RawIngestEvent",
     "RiskScore",
     "SourceRegistry",
+    "WhoObservation",
 ]

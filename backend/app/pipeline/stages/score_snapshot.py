@@ -1,11 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
-from sqlalchemy import select
-
-from app.models import IndicatorSnapshot, PipelineRunScore
-from app.pipeline.stages.score import calculate_risk_value, classify_risk_band, derive_score_features
+from app.pipeline.stages.score import MODEL_VERSION, score_pipeline_run
 
 from .contracts import PipelineStage, StageContext, StageResult
 
@@ -16,46 +11,30 @@ class ScoreSnapshotStage(PipelineStage):
 
     def run(self, context: StageContext) -> StageResult:
         snapshot_ref_id = int(context.artifacts["snapshot_ref_id"])
-        target_pipeline_run_id = int(context.artifacts["enrichment_pipeline_run_id"])
         sample_limit = int(context.params.get("sample_limit") or 100)
-
-        rows = context.db.execute(
-            select(IndicatorSnapshot.value, IndicatorSnapshot.dim_json)
-            .where(IndicatorSnapshot.value.is_not(None))
-            .limit(sample_limit * 10)
-        ).all()
-        values: list[float] = []
-        for value, dim_json in rows:
-            row_snapshot_ref = None
-            if isinstance(dim_json, dict):
-                row_snapshot_ref = dim_json.get("_snapshot_ref_id")
-            if row_snapshot_ref == snapshot_ref_id:
-                values.append(float(value))
-            if len(values) >= sample_limit:
-                break
-
-        features = derive_score_features(values)
-        risk_value = calculate_risk_value(features)
-        risk_band = classify_risk_band(risk_value)
-        factors = {
-            "signal_count": features.signal_count,
-            "mean_value": features.mean_value,
-            "max_value": features.max_value,
-            "snapshot_ref_id": snapshot_ref_id,
-        }
-        context.db.add(
-            PipelineRunScore(
-                pipeline_run_id=target_pipeline_run_id,
-                scored_at=datetime.now(tz=UTC),
-                risk_value=risk_value,
-                risk_band=risk_band,
-                factors_json=factors,
-                model_version="deterministic-v2-snapshot-scoped",
-            )
+        target_pipeline_run_id = context.pipeline_run_id if context.pipeline_run_id > 0 else int(context.artifacts["enrichment_pipeline_run_id"])
+        result = score_pipeline_run(
+            context.db,
+            pipeline_run_id=target_pipeline_run_id,
+            snapshot_ref_id=snapshot_ref_id,
+            sample_limit=sample_limit,
         )
+        top_country = result.top_countries[0] if result.top_countries else None
         context.db.commit()
         return StageResult(
-            status="ok",
-            metrics={"records_in": features.signal_count, "records_ok": 1, "records_failed": 0},
-            artifacts={"risk_value": risk_value, "risk_band": risk_band},
+            status=result.status,
+            metrics={
+                "records_in": result.records_in,
+                "records_ok": result.records_ok,
+                "records_failed": result.records_failed,
+                "countries_ranked": result.countries_ranked,
+            },
+            artifacts={
+                "risk_score": None if top_country is None else top_country["risk_score"],
+                "risk_band": None if top_country is None else top_country["risk_band"],
+                "countries_ranked": result.countries_ranked,
+                "top_countries": result.top_countries,
+                "model_version": MODEL_VERSION,
+                "result_pipeline_run_id": target_pipeline_run_id,
+            },
         )

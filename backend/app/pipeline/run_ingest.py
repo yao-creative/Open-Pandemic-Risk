@@ -170,6 +170,8 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
                     item_limit=settings.ingest_who_item_limit,
                     profile_name=profile_name,
                     profile_category=item.category,
+                    indicator_label=item.label,
+                    risk_direction=item.risk_direction,
                     snapshot_ref_id=pipeline_run.id,
                 )
             code_results.append(

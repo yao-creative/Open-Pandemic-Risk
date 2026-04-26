@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -13,6 +14,7 @@ from app.settings import Settings
 
 
 STAGE_ORDER = ["ingest_snapshot", "enrich_snapshot_agent", "score_snapshot"]
+logger = logging.getLogger("biohack.pipeline.runner")
 
 
 class PipelineRunner:
@@ -31,6 +33,7 @@ class PipelineRunner:
             for run in recent_runs:
                 details = run.details_json or {}
                 if details.get("idempotency_key") == idempotency_key:
+                    logger.info("pipeline_run_reused pipeline_run_id=%s idempotency_key=%s", run.id, idempotency_key)
                     return run
 
         now = datetime.now(tz=UTC)
@@ -53,6 +56,7 @@ class PipelineRunner:
         db.add(run)
         db.commit()
         db.refresh(run)
+        logger.info("pipeline_run_created pipeline_run_id=%s idempotency_key=%s", run.id, idempotency_key or "-")
         return run
 
     def _append_event(self, db: Session, *, pipeline_run_id: int, stage_name: str | None, event_type: str, message: str, payload: dict[str, Any] | None = None) -> None:
@@ -72,10 +76,12 @@ class PipelineRunner:
         if run is None:
             raise ValueError(f"pipeline_run not found: {pipeline_run_id}")
         if run.status not in {"queued", "running"}:
+            logger.info("pipeline_run_skipped pipeline_run_id=%s status=%s", pipeline_run_id, run.status)
             return run
 
         run.status = "running"
         run.started_at = run.started_at or datetime.now(tz=UTC)
+        logger.info("pipeline_run_started pipeline_run_id=%s", run.id)
         details = run.details_json or {}
         artifacts = dict(details.get("artifacts") or {})
         self._append_event(
@@ -104,6 +110,7 @@ class PipelineRunner:
                     error_summary=None,
                 )
                 db.add(stage_row)
+                logger.info("stage_started pipeline_run_id=%s stage=%s", run.id, stage_name)
                 self._append_event(
                     db,
                     pipeline_run_id=run.id,
@@ -131,6 +138,15 @@ class PipelineRunner:
                 stage_row.artifacts_json = result.artifacts
                 stage_row.error_summary = result.error
                 artifacts.update(result.artifacts)
+                logger.info(
+                    "stage_finished pipeline_run_id=%s stage=%s status=%s metrics=%s artifacts=%s error=%s",
+                    run.id,
+                    stage_name,
+                    result.status,
+                    result.metrics,
+                    result.artifacts,
+                    result.error,
+                )
                 self._append_event(
                     db,
                     pipeline_run_id=run.id,
@@ -149,6 +165,7 @@ class PipelineRunner:
             run.status = "completed"
             run.finished_at = datetime.now(tz=UTC)
             run.error_summary = None
+            logger.info("pipeline_run_completed pipeline_run_id=%s artifacts=%s", run.id, artifacts)
             self._append_event(
                 db,
                 pipeline_run_id=run.id,
@@ -163,6 +180,7 @@ class PipelineRunner:
             run.status = "failed"
             run.finished_at = datetime.now(tz=UTC)
             run.error_summary = str(exc)
+            logger.exception("pipeline_run_failed pipeline_run_id=%s error=%s", run.id, exc)
             self._append_event(
                 db,
                 pipeline_run_id=run.id,

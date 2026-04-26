@@ -3,10 +3,365 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>biohack-frontend</title>
+    <title>Outbreak Watch Dev Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #efe8da;
+        --paper: rgba(255, 255, 255, 0.9);
+        --paper-strong: rgba(255, 255, 255, 0.96);
+        --ink: #12211e;
+        --muted: #61716a;
+        --line: rgba(18, 33, 30, 0.12);
+        --accent: #1d6858;
+        --accent-soft: rgba(29, 104, 88, 0.12);
+        --warn: #b9582f;
+        --warn-soft: rgba(185, 88, 47, 0.12);
+        --ok: #2d7a49;
+        --ok-soft: rgba(45, 122, 73, 0.12);
+        --shadow: 0 24px 60px rgba(18, 33, 30, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background:
+          radial-gradient(circle at top left, rgba(29, 104, 88, 0.16), transparent 28%),
+          radial-gradient(circle at 80% 12%, rgba(185, 88, 47, 0.12), transparent 24%),
+          linear-gradient(180deg, #f7f2e9 0%, #efe8da 52%, #e7dece 100%);
+        color: var(--ink);
+        font-family: "IBM Plex Sans", sans-serif;
+      }
+
+      body {
+        padding: 24px;
+      }
+
+      .shell {
+        max-width: 1240px;
+        margin: 0 auto;
+        display: grid;
+        gap: 20px;
+      }
+
+      .hero,
+      .card {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(14px);
+      }
+
+      .hero {
+        padding: 28px;
+        display: grid;
+        gap: 18px;
+      }
+
+      .eyebrow {
+        width: fit-content;
+        padding: 7px 11px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid rgba(29, 104, 88, 0.16);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2 {
+        margin: 0;
+        font-family: "IBM Plex Serif", serif;
+      }
+
+      h1 {
+        font-size: clamp(2.4rem, 3vw, 3.6rem);
+        line-height: 0.98;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .hero-grid,
+      .grid {
+        display: grid;
+        gap: 18px;
+      }
+
+      .hero-grid {
+        grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+      }
+
+      .grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .card {
+        padding: 22px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .card h2 {
+        font-size: 1.5rem;
+      }
+
+      .card-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .status-pill {
+        width: fit-content;
+        padding: 7px 11px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        background: rgba(18, 33, 30, 0.08);
+        color: var(--ink);
+      }
+
+      .status-pill.ok {
+        background: var(--ok-soft);
+        color: var(--ok);
+      }
+
+      .status-pill.warn {
+        background: var(--warn-soft);
+        color: var(--warn);
+      }
+
+      .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .kpi {
+        padding: 16px;
+        border-radius: 18px;
+        background: var(--paper-strong);
+        border: 1px solid var(--line);
+      }
+
+      .kpi-label {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .kpi-value {
+        margin-top: 6px;
+        font-size: 1.35rem;
+        font-weight: 700;
+      }
+
+      .mono,
+      code,
+      pre {
+        font-family: "IBM Plex Mono", monospace;
+      }
+
+      .list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .list-item {
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: var(--paper-strong);
+        border: 1px solid var(--line);
+      }
+
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      button {
+        appearance: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 18px;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .button-primary {
+        background: var(--ink);
+        color: #fff;
+      }
+
+      .button-secondary {
+        background: rgba(255, 255, 255, 0.84);
+        color: var(--ink);
+        border: 1px solid var(--line);
+      }
+
+      pre {
+        margin: 0;
+        padding: 18px;
+        border-radius: 20px;
+        background: #111917;
+        color: #dce8e2;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        white-space: pre-wrap;
+        word-break: break-word;
+        min-height: 220px;
+      }
+
+      @media (max-width: 980px) {
+        .hero-grid,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 640px) {
+        body {
+          padding: 14px;
+        }
+
+        .hero,
+        .card {
+          padding: 18px;
+        }
+
+        .kpi-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
   </head>
   <body>
-    <pre id="status">checking backend readiness...</pre>
+    <div class="shell">
+      <section class="hero">
+        <span class="eyebrow">Docker-first debug surface</span>
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <h1>Outbreak Watch should open as a frontend, not a raw backend JSON page.</h1>
+            <p class="muted">
+              This page makes the current wiring explicit: what URL you opened, which API the browser is
+              calling, whether backend liveness and readiness pass, and what to inspect next.
+            </p>
+          </div>
+          <div class="card">
+            <div class="card-title">
+              <h2>Current Target</h2>
+              <span id="frontend-status-pill" class="status-pill">checking</span>
+            </div>
+            <div class="kpi-grid">
+              <div class="kpi">
+                <div class="kpi-label">Frontend URL</div>
+                <div id="frontend-url" class="kpi-value mono">pending</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-label">API Base</div>
+                <div id="api-base" class="kpi-value mono">pending</div>
+              </div>
+            </div>
+            <p class="muted">
+              If you expected a richer demo UI, the repo docs already flagged the old frontend as a placeholder.
+              This page is the debugging bridge until the ranking UI is wired to live pipeline results.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <div class="card-title">
+            <h2>Backend Health</h2>
+            <span id="health-pill" class="status-pill">checking</span>
+          </div>
+          <div class="list">
+            <div class="list-item">
+              <div class="kpi-label">Liveness</div>
+              <div id="health-summary" class="mono">pending</div>
+            </div>
+            <div class="list-item">
+              <div class="kpi-label">Readiness</div>
+              <div id="ready-summary" class="mono">pending</div>
+            </div>
+            <div class="list-item">
+              <div class="kpi-label">Ready Details</div>
+              <div id="ready-details" class="muted">pending</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-title">
+            <h2>Quick Links</h2>
+            <span class="status-pill ok">live</span>
+          </div>
+          <div class="list">
+            <div class="list-item"><a id="health-link" href="#" target="_blank" rel="noreferrer">Open `/healthz`</a></div>
+            <div class="list-item"><a id="ready-link" href="#" target="_blank" rel="noreferrer">Open `/readyz`</a></div>
+            <div class="list-item"><a id="pipeline-link" href="#" target="_blank" rel="noreferrer">Open `/pipeline/run` docs path</a></div>
+            <div class="list-item"><a id="debug-link" href="#" target="_blank" rel="noreferrer">Open `/debug/stages`</a></div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-title">
+            <h2>Actions</h2>
+            <span id="refresh-pill" class="status-pill">idle</span>
+          </div>
+          <div class="actions">
+            <button id="refresh-button" class="button-primary" type="button">Refresh checks</button>
+            <button id="copy-button" class="button-secondary" type="button">Copy debug summary</button>
+          </div>
+          <p id="copy-status" class="muted">The copied text includes frontend URL, API base, and the latest health/readiness results.</p>
+        </article>
+      </section>
+
+      <section class="card">
+        <div class="card-title">
+          <h2>Browser Debug Console</h2>
+          <span class="status-pill ok">client-side</span>
+        </div>
+        <pre id="status-log">Booting debug console...</pre>
+      </section>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
