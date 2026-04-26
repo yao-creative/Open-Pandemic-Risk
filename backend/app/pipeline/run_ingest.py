@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.ingest.who import ingest_who_odata
 from app.models import PipelineRun
+from app.pipeline.stages import enrich_with_exa
 from app.settings import Settings
 
 
@@ -100,6 +101,19 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
                 records_failed=0,
                 records_skipped=0,
                 error=_classify_exception(exc),
+            )
+        )
+
+    exa_result = enrich_with_exa(db, settings=settings, pipeline_run_id=pipeline_run.id)
+    if exa_result.status != "skipped":
+        source_results.append(
+            SourceRunResult(
+                source="exa_enrichment",
+                records_in=settings.exa_num_results,
+                records_ok=exa_result.citations_saved,
+                records_failed=0 if exa_result.error is None else settings.exa_num_results,
+                records_skipped=0,
+                error=exa_result.error,
             )
         )
 
