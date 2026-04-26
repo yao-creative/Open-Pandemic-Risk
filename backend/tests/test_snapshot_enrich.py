@@ -147,6 +147,50 @@ def test_snapshot_enrich_idempotency_reuses_run(client: TestClient, monkeypatch:
 
 
 @pytest.mark.integration_local
+def test_snapshot_enrich_uses_latest_ingest_snapshot_by_default(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    _install_fake_exa(monkeypatch)
+
+    with db_module.get_session_local()() as db:
+        source = SourceRegistry(name="who_odata", kind="api", base_url="https://example.org", poll_interval_minutes=1440, enabled=True)
+        db.add(source)
+        db.flush()
+        ingest_run = PipelineRun(
+            pipeline_name="who_surveillance_sync_v1",
+            started_at=datetime.now(tz=UTC),
+            finished_at=datetime.now(tz=UTC),
+            status="ok",
+            records_in=1,
+            records_ok=1,
+            records_failed=0,
+            error_summary=None,
+        )
+        db.add(ingest_run)
+        db.flush()
+        db.add(
+            IndicatorSnapshot(
+                source_id=source.id,
+                indicator_code="WHO_1",
+                country_code="MYS",
+                period_date=datetime(2024, 1, 1, tzinfo=UTC),
+                value=10.0,
+                unit="x",
+                dim_json={},
+            )
+        )
+        db.commit()
+
+    resp = client.post("/agent/enrich", json={"idempotency_key": "default-snapshot"})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["snapshot_ref_id"] is not None
+
+    with db_module.get_session_local()() as db:
+        run = db.get(EnrichmentRun, payload["enrichment_run_id"])
+        assert run is not None
+        assert run.snapshot_ref_id == payload["snapshot_ref_id"]
+
+
+@pytest.mark.integration_local
 def test_snapshot_enrich_requires_compatible_snapshot(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     _install_fake_exa(monkeypatch)
     resp = client.post("/agent/enrich", json={"idempotency_key": "missing-snapshot"})

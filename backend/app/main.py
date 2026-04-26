@@ -136,12 +136,15 @@ def agent_snapshot_enrich(
     if snapshot_ref_id is None:
         snapshot_ref_id = db.execute(
             select(PipelineRun.id)
-            .where(PipelineRun.pipeline_name == "phase1_sync_ingestion")
+            .where(PipelineRun.pipeline_name.in_(("phase1_sync_ingestion", "who_surveillance_sync_v1")))
             .order_by(desc(PipelineRun.id))
             .limit(1)
         ).scalar_one_or_none()
     if snapshot_ref_id is None:
-        raise HTTPException(status_code=400, detail="no compatible snapshot found (phase1_sync_ingestion)")
+        raise HTTPException(
+            status_code=400,
+            detail="no compatible snapshot found (phase1_sync_ingestion or who_surveillance_sync_v1)",
+        )
 
     if payload.idempotency_key:
         existing_query = select(EnrichmentRun).where(EnrichmentRun.idempotency_key == payload.idempotency_key)
