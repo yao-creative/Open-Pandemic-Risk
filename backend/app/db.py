@@ -16,8 +16,14 @@ def get_engine():
     global _engine
     if _engine is None:
         settings = get_settings()
-        connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
+        is_sqlite = settings.database_url.startswith("sqlite")
+        connect_args = {"check_same_thread": False, "timeout": 60} if is_sqlite else {}
         _engine = create_engine(settings.database_url, connect_args=connect_args)
+        if is_sqlite:
+            with _engine.begin() as conn:
+                conn.execute(text("PRAGMA journal_mode=WAL"))
+                conn.execute(text("PRAGMA synchronous=NORMAL"))
+                conn.execute(text("PRAGMA busy_timeout=60000"))
     return _engine
 
 
