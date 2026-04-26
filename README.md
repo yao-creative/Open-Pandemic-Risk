@@ -13,7 +13,7 @@
 # ***Our main contributions are:***
 
 1. *Developing a deployable and open platform for pandemic risk monitoring*
-2. *Scaffolding a pipeline aligned with policy makers and modern technology to aggregate natural language data regarding the alert signal in a scalable manner*
+2. *Scaffolding an explainable and actionable pipeline aligned with policy makers and modern technology to aggregate natural language data regarding the alert signal in a scalable manner*
 
 ## What This Repo Implements
 
