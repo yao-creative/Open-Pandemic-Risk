@@ -7,12 +7,14 @@ from .contracts import PipelineStage, StageContext, StageResult
 
 class ScoreSnapshotStage(PipelineStage):
     name = "score_snapshot"
-    required_inputs = ("snapshot_ref_id", "enrichment_pipeline_run_id")
+    required_inputs = ("snapshot_ref_id",)
 
     def run(self, context: StageContext) -> StageResult:
         snapshot_ref_id = int(context.artifacts["snapshot_ref_id"])
         sample_limit = int(context.params.get("sample_limit") or 100)
-        target_pipeline_run_id = context.pipeline_run_id if context.pipeline_run_id > 0 else int(context.artifacts["enrichment_pipeline_run_id"])
+        target_pipeline_run_id = context.pipeline_run_id
+        if target_pipeline_run_id <= 0:
+            target_pipeline_run_id = int(context.artifacts.get("enrichment_pipeline_run_id") or snapshot_ref_id)
         result = score_pipeline_run(
             context.db,
             pipeline_run_id=target_pipeline_run_id,

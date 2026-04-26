@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -12,12 +12,31 @@ _engine = None
 SessionLocal = None
 
 
+def _is_sqlite_url(database_url: str) -> bool:
+    return database_url.startswith("sqlite")
+
+
 def get_engine():
     global _engine
     if _engine is None:
         settings = get_settings()
-        connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
+        connect_args = {}
+        if _is_sqlite_url(settings.database_url):
+            connect_args = {
+                "check_same_thread": False,
+                "timeout": settings.sqlite_busy_timeout_seconds,
+            }
         _engine = create_engine(settings.database_url, connect_args=connect_args)
+        if _is_sqlite_url(settings.database_url):
+            busy_timeout_ms = max(int(settings.sqlite_busy_timeout_seconds * 1000), 0)
+
+            @event.listens_for(_engine, "connect")
+            def _configure_sqlite(dbapi_connection, _connection_record) -> None:
+                cursor = dbapi_connection.cursor()
+                cursor.execute(f"PRAGMA busy_timeout = {busy_timeout_ms}")
+                if settings.sqlite_enable_wal:
+                    cursor.execute("PRAGMA journal_mode = WAL")
+                cursor.close()
     return _engine
 
 

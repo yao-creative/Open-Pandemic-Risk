@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 import pytest
@@ -8,6 +9,7 @@ from sqlalchemy import select
 
 from app import db as db_module
 from app import settings as settings_module
+from app.pipeline.run_ingest import run_ingestion
 from app.models import CountryRiskResult, PipelineStageRun
 
 
@@ -180,3 +182,56 @@ def test_pipeline_idempotency_reuses_run(client: TestClient, monkeypatch: pytest
     assert first.status_code == 200
     assert second.status_code == 200
     assert first.json()["pipeline_run_id"] == second.json()["pipeline_run_id"]
+
+
+@pytest.mark.integration_local
+def test_run_ingestion_keeps_http_fetches_outside_db_transaction(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "app.pipeline.run_ingest.get_who_surveillance_profile",
+        lambda: (
+            "who_surveillance_mvp_v1",
+            [
+                SimpleNamespace(
+                    code="TEST_A",
+                    category="disease_burden",
+                    label="Test A",
+                    risk_direction="higher_is_worse",
+                ),
+                SimpleNamespace(
+                    code="TEST_B",
+                    category="surveillance_readiness",
+                    label="Test B",
+                    risk_direction="higher_is_better",
+                ),
+            ],
+        ),
+    )
+
+    with db_module.get_session_local()() as db:
+        transaction_states: list[bool] = []
+
+        def fake_get(url: str, *args, **kwargs):
+            transaction_states.append(db.in_transaction())
+            code = url.rstrip("/").rsplit("/", 1)[-1]
+            return _FakeGetResponse(
+                {
+                    "value": [
+                        {
+                            "IndicatorCode": code,
+                            "SpatialDimType": "COUNTRY",
+                            "SpatialDim": "MYS",
+                            "TimeDim": 2024,
+                            "TimeDimensionBegin": "2024-01-01T00:00:00+00:00",
+                            "NumericValue": 42.0,
+                            "Value": "42",
+                        }
+                    ]
+                }
+            )
+
+        monkeypatch.setattr("httpx.get", fake_get)
+
+        result = run_ingestion(db, settings_module.get_settings())
+
+    assert result.status == "ok"
+    assert transaction_states == [False, False]

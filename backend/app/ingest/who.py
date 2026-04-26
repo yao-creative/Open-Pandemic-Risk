@@ -129,6 +129,9 @@ def ingest_who_odata(
 ) -> IngestStats:
     stats = IngestStats()
     seen_keys: set[tuple[str, str, datetime | None]] = set()
+    response = httpx.get(url, timeout=timeout_seconds)
+    response.raise_for_status()
+    payload = response.json()
     source = _get_or_create_source(
         db,
         name="who_odata",
@@ -136,10 +139,6 @@ def ingest_who_odata(
         base_url=url,
         poll_interval_minutes=24 * 60,
     )
-
-    response = httpx.get(url, timeout=timeout_seconds)
-    response.raise_for_status()
-    payload = response.json()
     values = payload.get("value", [])
     indicator_code_hint = url.rstrip("/").rsplit("/", 1)[-1]
 
