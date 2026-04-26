@@ -90,7 +90,7 @@ def test_snapshot_enrich_run_and_score(client: TestClient, monkeypatch: pytest.M
         snapshot_id = ingest_run.id
 
     create_resp = client.post(
-        "/agent/snapshot-enrich",
+        "/agent/enrich",
         json={"snapshot_id": snapshot_id, "idempotency_key": "run-001"},
     )
     assert create_resp.status_code == 200
@@ -111,17 +111,44 @@ def test_snapshot_enrich_run_and_score(client: TestClient, monkeypatch: pytest.M
     assert score_payload["status"] == "ok"
     assert score_payload["risk_band"] in {"low", "medium", "high", "critical"}
 
+    with db_module.get_session_local()() as db:
+        enrich_pipeline = db.get(PipelineRun, score_payload["pipeline_run_id"])
+        assert enrich_pipeline is not None
+        assert enrich_pipeline.pipeline_name == "agent_enrich"
+
 
 @pytest.mark.integration_local
 def test_snapshot_enrich_idempotency_reuses_run(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     _install_fake_exa(monkeypatch)
 
-    first = client.post("/agent/snapshot-enrich", json={"idempotency_key": "same-key"})
+    with db_module.get_session_local()() as db:
+        ingest_run = PipelineRun(
+            pipeline_name="phase1_sync_ingestion",
+            started_at=datetime.now(tz=UTC),
+            finished_at=datetime.now(tz=UTC),
+            status="ok",
+            records_in=1,
+            records_ok=1,
+            records_failed=0,
+            error_summary=None,
+        )
+        db.add(ingest_run)
+        db.commit()
+
+    first = client.post("/agent/enrich", json={"idempotency_key": "same-key"})
     assert first.status_code == 200
-    second = client.post("/agent/snapshot-enrich", json={"idempotency_key": "same-key"})
+    second = client.post("/agent/enrich", json={"idempotency_key": "same-key"})
     assert second.status_code == 200
     assert first.json()["enrichment_run_id"] == second.json()["enrichment_run_id"]
 
     with db_module.get_session_local()() as db:
         runs = db.query(EnrichmentRun).filter(EnrichmentRun.idempotency_key == "same-key").all()
         assert len(runs) == 1
+
+
+@pytest.mark.integration_local
+def test_snapshot_enrich_requires_compatible_snapshot(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    _install_fake_exa(monkeypatch)
+    resp = client.post("/agent/enrich", json={"idempotency_key": "missing-snapshot"})
+    assert resp.status_code == 400
+    assert "no compatible snapshot" in resp.json()["detail"]

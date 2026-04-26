@@ -1,6 +1,4 @@
 from .agent import (
-    AgentQueryRequest,
-    AgentQueryResponse,
     EnrichmentRunStatusResponse,
     ScoreRunResponse,
     SnapshotEnrichRequest,
@@ -9,8 +7,6 @@ from .agent import (
 from .ingest import IngestRunResponse, SourceRunResultSchema
 
 __all__ = [
-    "AgentQueryRequest",
-    "AgentQueryResponse",
     "EnrichmentRunStatusResponse",
     "IngestRunResponse",
     "ScoreRunResponse",

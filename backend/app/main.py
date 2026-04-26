@@ -8,14 +8,12 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from .agents.react_agent import AgentRunner
-from .agents import execute_agent_tool
 from .azure_client import check_azure_ready
 from .db import check_db_ready, get_db_session, get_session_local, init_db
 from .models import EnrichmentReport, EnrichmentRun, PipelineRun, PipelineRunScore
 from .pipeline.run_ingest import run_ingestion
 from .pipeline.stages.score import score_pipeline_run
-from .schemas import AgentQueryRequest, AgentQueryResponse, IngestRunResponse, SourceRunResultSchema
-from .schemas import EnrichmentRunStatusResponse, ScoreRunResponse, SnapshotEnrichRequest, SnapshotEnrichResponse
+from .schemas import EnrichmentRunStatusResponse, IngestRunResponse, ScoreRunResponse, SnapshotEnrichRequest, SnapshotEnrichResponse, SourceRunResultSchema
 from .settings import get_settings
 
 app = FastAPI(title="biohack-api")
@@ -82,14 +80,7 @@ def _run_snapshot_enrichment_background(enrichment_run_id: int) -> None:
         runner.run(db, enrichment_run_id=enrichment_run_id)
 
 
-@app.post("/agent/query", response_model=AgentQueryResponse, deprecated=True)
-def agent_query(payload: AgentQueryRequest, db: Session = Depends(get_db_session)) -> AgentQueryResponse:
-    settings = get_settings()
-    result = execute_agent_tool(db, settings=settings, tool=payload.tool, args=payload.args)
-    db.commit()
-    return AgentQueryResponse(tool=payload.tool, result=result)
-
-
+@app.post("/agent/enrich", response_model=SnapshotEnrichResponse)
 @app.post("/agent/snapshot-enrich", response_model=SnapshotEnrichResponse)
 def agent_snapshot_enrich(
     payload: SnapshotEnrichRequest,
@@ -106,6 +97,8 @@ def agent_snapshot_enrich(
             .order_by(desc(PipelineRun.id))
             .limit(1)
         ).scalar_one_or_none()
+    if snapshot_ref_id is None:
+        raise HTTPException(status_code=400, detail="no compatible snapshot found (phase1_sync_ingestion)")
 
     if payload.idempotency_key:
         existing_query = select(EnrichmentRun).where(EnrichmentRun.idempotency_key == payload.idempotency_key)
@@ -122,7 +115,7 @@ def agent_snapshot_enrich(
 
     now = datetime.now(tz=UTC)
     pipeline_run = PipelineRun(
-        pipeline_name="snapshot_react_enrichment",
+        pipeline_name="agent_enrich",
         started_at=now,
         finished_at=None,
         status="queued",
