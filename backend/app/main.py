@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 
 from .api.routes import debug_stages_router, pipeline_router
 from .azure_client import check_azure_ready
-from .db import check_db_ready, init_db
+from .db import check_db_ready, init_db, run_startup_preflight_checks
 
 app = FastAPI(title="biohack-api")
 
@@ -20,6 +20,7 @@ app.add_middleware(
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    run_startup_preflight_checks()
 
 
 @app.get("/healthz")

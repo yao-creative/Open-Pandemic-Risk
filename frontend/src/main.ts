@@ -29,7 +29,7 @@ type ReportViewModel = {
   evidence: Array<Record<string, unknown>>
 }
 
-const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8010'
 const pollIntervalMs = 2500
 
 const runButtonEl = document.getElementById('run-pipeline') as HTMLButtonElement | null
