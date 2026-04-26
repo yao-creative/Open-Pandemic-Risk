@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app import db as db_module
 from app import settings as settings_module
-from app.models import PipelineRunScore, PipelineStageRun
+from app.models import MlRiskSnapshot, PipelineStageRun, RecommendationResponse
 
 
 class _FakeGetResponse:
@@ -86,11 +86,21 @@ def test_pipeline_run_happy_path(client: TestClient, monkeypatch: pytest.MonkeyP
     assert payload["status"] == "completed"
     assert payload["pipeline_name"] == "pipeline_full_v1"
     stage_names = [item["stage_name"] for item in payload["stage_runs"]]
-    assert stage_names == ["ingest_snapshot", "enrich_snapshot_agent", "score_snapshot"]
+    assert stage_names == ["ingest_snapshot", "enrich_snapshot_agent", "recommend_response_agent"]
     assert all(item["status"] == "completed" for item in payload["stage_runs"])
     assert payload["artifacts"]["snapshot_ref_id"] > 0
     assert payload["artifacts"]["enrichment_run_id"] > 0
-    assert payload["artifacts"]["risk_band"] in {"low", "medium", "high", "critical"}
+    assert payload["artifacts"]["recommendation_response_id"] > 0
+    assert payload["artifacts"]["recommendation_level"] in {
+        "urgent_response",
+        "heightened_monitoring",
+        "routine_monitoring",
+        "insufficient_evidence",
+    }
+    assert payload["artifacts"]["confidence"] in {"high", "medium", "low", "unknown"}
+    assert isinstance(payload["artifacts"]["citations"], list)
+    assert "risk_band" not in payload["artifacts"]
+    assert "risk_value" not in payload["artifacts"]
 
     events_resp = client.get(f"/pipeline/runs/{pipeline_run_id}/events")
     assert events_resp.status_code == 200
@@ -103,8 +113,10 @@ def test_pipeline_run_happy_path(client: TestClient, monkeypatch: pytest.MonkeyP
             select(PipelineStageRun).where(PipelineStageRun.pipeline_run_id == pipeline_run_id)
         ).scalars().all()
         assert len(stage_rows) == 3
-        scores = db.execute(select(PipelineRunScore).order_by(PipelineRunScore.id.desc())).scalars().all()
-        assert len(scores) >= 1
+        responses = db.execute(select(RecommendationResponse).order_by(RecommendationResponse.id.desc())).scalars().all()
+        assert len(responses) >= 1
+        ml_snapshots = db.execute(select(MlRiskSnapshot).order_by(MlRiskSnapshot.id.desc())).scalars().all()
+        assert len(ml_snapshots) >= 1
 
 
 @pytest.mark.integration_local

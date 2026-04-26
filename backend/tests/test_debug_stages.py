@@ -8,7 +8,7 @@ import pytest
 
 from app import db as db_module
 from app import settings as settings_module
-from app.models import IndicatorSnapshot, PipelineRun, SourceRegistry
+from app.models import EnrichmentRun, IndicatorSnapshot, PipelineRun, SourceRegistry
 
 
 class _FakeGetResponse:
@@ -52,7 +52,7 @@ def test_debug_stage_catalog_and_validation(client: TestClient):
     catalog = client.get("/debug/stages")
     assert catalog.status_code == 200
     names = [item["name"] for item in catalog.json()["stages"]]
-    assert names == ["ingest_snapshot", "enrich_snapshot_agent", "score_snapshot"]
+    assert names == ["ingest_snapshot", "enrich_snapshot_agent", "recommend_response_agent"]
 
     invalid = client.post("/debug/stages/enrich_snapshot_agent/validate", json={})
     assert invalid.status_code == 200
@@ -72,7 +72,7 @@ def test_debug_ingest_stage_run(client: TestClient, monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.integration_local
-def test_debug_score_stage_scopes_snapshot_rows(client: TestClient):
+def test_debug_recommend_stage_uses_snapshot_payload(client: TestClient):
     with db_module.get_session_local()() as db:
         source = SourceRegistry(
             name="who_odata",
@@ -83,6 +83,20 @@ def test_debug_score_stage_scopes_snapshot_rows(client: TestClient):
         )
         db.add(source)
         db.flush()
+        snapshot_run = PipelineRun(
+            pipeline_name="test-snapshot-source",
+            started_at=datetime.now(tz=UTC),
+            finished_at=None,
+            status="completed",
+            records_in=0,
+            records_ok=0,
+            records_failed=0,
+            records_skipped=0,
+            error_summary=None,
+            details_json=None,
+        )
+        db.add(snapshot_run)
+        db.flush()
         db.add_all(
             [
                 IndicatorSnapshot(
@@ -92,7 +106,7 @@ def test_debug_score_stage_scopes_snapshot_rows(client: TestClient):
                     period_date=datetime(2024, 1, 1, tzinfo=UTC),
                     value=90.0,
                     unit="x",
-                    dim_json={"_snapshot_ref_id": 111},
+                    dim_json={"_snapshot_ref_id": snapshot_run.id},
                 ),
                 IndicatorSnapshot(
                     source_id=source.id,
@@ -101,12 +115,12 @@ def test_debug_score_stage_scopes_snapshot_rows(client: TestClient):
                     period_date=datetime(2024, 1, 1, tzinfo=UTC),
                     value=5.0,
                     unit="x",
-                    dim_json={"_snapshot_ref_id": 222},
+                    dim_json={"_snapshot_ref_id": snapshot_run.id},
                 ),
             ]
         )
-        run = PipelineRun(
-            pipeline_name="test-score-target",
+        enrich_pipeline = PipelineRun(
+            pipeline_name="test-enrich-target",
             started_at=datetime.now(tz=UTC),
             finished_at=None,
             status="running",
@@ -117,15 +131,40 @@ def test_debug_score_stage_scopes_snapshot_rows(client: TestClient):
             error_summary=None,
             details_json=None,
         )
-        db.add(run)
+        db.add(enrich_pipeline)
+        db.flush()
+        enrich_run = EnrichmentRun(
+            pipeline_run_id=enrich_pipeline.id,
+            snapshot_ref_id=snapshot_run.id,
+            idempotency_key=None,
+            status="completed",
+            max_steps=1,
+            max_targets=1,
+            max_exa_calls=0,
+            steps_used=1,
+            exa_calls_used=0,
+            started_at=datetime.now(tz=UTC),
+            finished_at=datetime.now(tz=UTC),
+            created_at=datetime.now(tz=UTC),
+            updated_at=datetime.now(tz=UTC),
+            error_summary=None,
+        )
+        db.add(enrich_run)
         db.commit()
-        target_pipeline_run_id = run.id
+        snapshot_ref_id = snapshot_run.id
+        enrichment_run_id = enrich_run.id
 
     resp = client.post(
-        "/debug/stages/score_snapshot/run",
-        json={"snapshot_ref_id": 111, "enrichment_pipeline_run_id": target_pipeline_run_id, "sample_limit": 10},
+        "/debug/stages/recommend_response_agent/run",
+        json={"snapshot_ref_id": snapshot_ref_id, "enrichment_run_id": enrichment_run_id},
     )
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["status"] == "ok"
-    assert payload["metrics"]["records_in"] == 1
+    assert payload["artifacts"]["recommendation_level"] in {
+        "urgent_response",
+        "heightened_monitoring",
+        "routine_monitoring",
+        "insufficient_evidence",
+    }
+    assert isinstance(payload["artifacts"]["citations"], list)
