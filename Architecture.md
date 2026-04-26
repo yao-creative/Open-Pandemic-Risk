@@ -565,3 +565,134 @@ sequenceDiagram
 - Avoid `flush()` after every `add()`; it increases round trips with little value.
 - Treat flush errors (unique/FK/check violations) as expected transactional failures and return deterministic API errors.
 - For async orchestration, create `pipeline_run`, flush once to get run id, enqueue tasks, then commit once.
+
+# Edit 4 Snapshot-First ReAct Enrichment Proposal 2026-04-26 12:44 Branch: proposal/aix-35-snapshot-react-enrichment
+
+## DB Compatibility Verdict
+
+- Current schema is partially compatible with the intended feature.
+- Compatible now:
+  - `pipeline_run` can continue to represent an orchestration run id.
+  - `exa_citation` can store URL/title/snippet evidence tied to a run.
+  - `pipeline_run_score` is already separable as a later scoring stage.
+  - `agent_tool_audit` provides an audit baseline for tool execution.
+- Missing for snapshot-first ReAct flow:
+  - no first-class `snapshot`/`context dump` object.
+  - no per-target enrichment result entity keyed to a snapshot-derived item.
+  - no final report table keyed to an enrichment run.
+
+## Compatibility Decision
+
+- Keep PR5 + PR6 primitives; do not discard them.
+- Refactor runtime interface from generic `POST /agent/query` to snapshot-driven orchestration endpoint.
+- Preserve scoring as a separate stage that consumes enrichment outputs after context and Exa evidence are finalized.
+
+## Snapshot Enrichment Sequence (Mermaid)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant API as backend/app/main.py (/agent/snapshot-enrich)
+    participant Runner as backend/app/agents/react_agent.py
+    participant Context as backend/app/services/context_builder.py
+    participant Tools as backend/app/agents/tools.py
+    participant Exa as backend/app/clients/exa_client.py
+    participant DB as backend/app/models/entities.py
+
+    API->>Runner: start run(snapshot_id optional)
+    Runner->>Context: load latest snapshot or explicit snapshot
+    Context->>DB: read source snapshot rows
+    DB-->>Context: normalized context candidates
+    Context-->>Runner: bounded context dump
+
+    Runner->>Tools: select_enrichment_targets(context)
+    Tools-->>Runner: ranked target list
+
+    loop bounded multi-turn enrichment
+        Runner->>Tools: search_exa(target query)
+        Tools->>Exa: search(query, num_results)
+        Exa-->>Tools: url/title/snippet rows
+        Tools->>DB: insert enrichment finding + citation rows
+        Tools-->>Runner: observation
+    end
+
+    Runner->>DB: persist final report
+    Runner->>DB: persist run summary/status
+    API-->>API: return run_id + summary
+```
+
+## Scoring After Enrichment Sequence (Mermaid)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant API as backend/app/main.py (/agent/runs/{id}/score)
+    participant Score as backend/app/pipeline/stages/score.py
+    participant DB as backend/app/models/entities.py
+
+    API->>DB: load enrichment report + findings by run_id
+    API->>Score: score_enriched_run(run_id)
+    Score->>DB: read enrichment facts and indicator snapshots
+    Score->>DB: insert pipeline_run_score row(s)
+    DB-->>API: scored artifacts
+    API-->>API: score status + risk bands
+```
+
+## Proposed Entity Additions (Scoped ERD)
+
+```mermaid
+erDiagram
+    PIPELINE_RUN ||--o{ ENRICHMENT_RUN : has
+    ENRICHMENT_RUN ||--|| CONTEXT_DUMP : produces
+    ENRICHMENT_RUN ||--o{ ENRICHMENT_FINDING : stores
+    ENRICHMENT_RUN ||--|| ENRICHMENT_REPORT : finalizes
+    ENRICHMENT_FINDING ||--o{ EXA_CITATION : references
+    ENRICHMENT_RUN ||--o{ AGENT_TOOL_AUDIT : audits
+    ENRICHMENT_RUN ||--o{ PIPELINE_RUN_SCORE : optional_scoring
+
+    ENRICHMENT_RUN {
+        int id PK
+        int pipeline_run_id FK
+        int snapshot_ref_id
+        string status
+        datetime started_at
+        datetime finished_at
+    }
+
+    CONTEXT_DUMP {
+        int id PK
+        int enrichment_run_id FK
+        json context_json
+        datetime created_at
+    }
+
+    ENRICHMENT_FINDING {
+        int id PK
+        int enrichment_run_id FK
+        string target_key
+        string query
+        json finding_json
+        datetime created_at
+    }
+
+    ENRICHMENT_REPORT {
+        int id PK
+        int enrichment_run_id FK
+        json summary_json
+        datetime created_at
+    }
+```
+
+## Implementation Notes
+
+- Keep existing `ExaClient`, `ExaCitation`, and `PipelineRunScore`; they map directly to enrichment evidence and delayed scoring.
+- Make `/agent/query` internal or deprecated once `/agent/snapshot-enrich` is stable.
+- Restrict tool surface to snapshot-context + enrichment workflow tools; avoid exposing generic table exploration as primary API behavior.
+- Add hard run bounds (`max_steps`, `max_exa_calls`, `max_targets`, timeout) at runner level.
+- Use idempotency key on `(snapshot_ref_id, policy_version)` so repeated wake-ups do not duplicate findings.
+
+## Rollout Notes
+
+- Phase 1 (MVP): run on latest snapshot only; persist context dump + findings + final report.
+- Phase 2: support explicit `snapshot_id` and replayable historical runs.
+- Phase 3: enable scoring endpoint/job from completed enrichment runs.
