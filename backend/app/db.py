@@ -17,8 +17,15 @@ def _resolve_repo_path(raw: str) -> Path:
     path = Path(raw)
     if path.is_absolute():
         return path
-    repo_root = Path(__file__).resolve().parents[2]
-    return repo_root / path
+    candidates = [
+        Path.cwd() / path,
+        Path(__file__).resolve().parents[2] / path,
+        Path(__file__).resolve().parents[1] / path,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
 def get_engine():
