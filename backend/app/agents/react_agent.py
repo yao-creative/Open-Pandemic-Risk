@@ -78,8 +78,6 @@ class ReadSnapshotContextTool(BaseTool):
                 .order_by(desc(PipelineRun.id))
                 .limit(1)
             ).scalar_one_or_none()
-            if snapshot_ref_id is None:
-                snapshot_ref_id = db.execute(select(PipelineRun.id).order_by(desc(PipelineRun.id)).limit(1)).scalar_one_or_none()
 
         state.snapshot_ref_id = snapshot_ref_id
 

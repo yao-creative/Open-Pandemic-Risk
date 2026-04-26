@@ -108,13 +108,10 @@ def agent_snapshot_enrich(
         ).scalar_one_or_none()
 
     if payload.idempotency_key:
-        existing = db.execute(
-            select(EnrichmentRun)
-            .where(EnrichmentRun.idempotency_key == payload.idempotency_key)
-            .where(EnrichmentRun.snapshot_ref_id == snapshot_ref_id)
-            .order_by(desc(EnrichmentRun.id))
-            .limit(1)
-        ).scalar_one_or_none()
+        existing_query = select(EnrichmentRun).where(EnrichmentRun.idempotency_key == payload.idempotency_key)
+        if snapshot_ref_id is not None:
+            existing_query = existing_query.where(EnrichmentRun.snapshot_ref_id == snapshot_ref_id)
+        existing = db.execute(existing_query.order_by(desc(EnrichmentRun.id)).limit(1)).scalar_one_or_none()
         if existing is not None:
             return SnapshotEnrichResponse(
                 enrichment_run_id=existing.id,
