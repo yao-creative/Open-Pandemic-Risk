@@ -22,8 +22,15 @@ class ScoreSnapshotStage(PipelineStage):
         path = Path(raw)
         if path.is_absolute():
             return path
-        repo_root = Path(__file__).resolve().parents[4]
-        return repo_root / path
+        candidates = [
+            Path.cwd() / path,
+            Path(__file__).resolve().parents[4] / path,
+            Path(__file__).resolve().parents[3] / path,
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return candidates[0]
 
     def _load_model_bundle(self, context: StageContext) -> dict[str, Any]:
         model_path = self._resolve_path(context.settings.ml_model_pickle_path)

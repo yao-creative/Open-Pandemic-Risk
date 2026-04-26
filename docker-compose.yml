@@ -18,6 +18,7 @@ services:
     ports:
       - "8010:8010"
     volumes:
+      - ./ml:/app/ml:ro
       - backend_data:/app/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://localhost:8010/readyz').getcode()==200 else 1)"]
