@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import re
 import sys
 
 import polars as pl
@@ -11,6 +12,48 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
 from ml.scripts.labeling import grade3_plus_flag, has_future_start_within, normalize_emergency_rating
+
+
+TITLE_TOPIC_CODE = {
+    "infectious_outbreak": 1,
+    "humanitarian_conflict": 2,
+    "natural_disaster": 3,
+    "system_update": 4,
+    "other": 5,
+}
+
+
+def _infer_title_topic(title: str) -> str:
+    text = title.lower()
+    infectious_terms = (
+        "outbreak",
+        "ebola",
+        "cholera",
+        "mpox",
+        "covid",
+        "influenza",
+        "measles",
+        "polio",
+        "marburg",
+        "dengue",
+        "virus",
+    )
+    if any(term in text for term in infectious_terms):
+        return "infectious_outbreak"
+
+    humanitarian_terms = ("crisis", "conflict", "humanitarian", "violence")
+    if any(term in text for term in humanitarian_terms):
+        return "humanitarian_conflict"
+
+    disaster_terms = ("earthquake", "flood", "cyclone", "hurricane", "storm")
+    if any(term in text for term in disaster_terms):
+        return "natural_disaster"
+
+    system_terms = ("update", "situation", "brief", "response")
+    if any(term in text for term in system_terms):
+        return "system_update"
+
+    return "other"
 
 
 def _build_x_features(x_df: pl.DataFrame) -> pl.DataFrame:
@@ -64,12 +107,42 @@ def _build_y_labels(y_df: pl.DataFrame) -> pl.DataFrame:
     for row in rows:
         rating_norm = normalize_emergency_rating(row.get("who_risk_assessment"))
         pub_dt = row["publication_ts"]
+
+        title_raw = str(row.get("title") or "")
+        title_norm = re.sub(r"\s+", " ", title_raw.lower()).strip()
+        title_word_count = len([w for w in title_norm.split(" ") if w])
+        title_topic = _infer_title_topic(title_norm)
+
         row["risk_rating_norm"] = rating_norm
         row["y_grade3_plus"] = grade3_plus_flag(rating_norm)
         row["y_event_start_t24h"] = has_future_start_within(pub_dt, start_times, window_hours=24)
         row["y_event_start_t72h"] = has_future_start_within(pub_dt, start_times, window_hours=72)
 
-    return pl.DataFrame(rows).sort("publication_ts") if rows else pl.DataFrame(schema=y_norm.schema)
+        # Additional feature transformations for small-data modeling.
+        row["title_norm"] = title_norm
+        row["title_char_len"] = len(title_norm)
+        row["title_word_count"] = title_word_count
+        row["title_has_outbreak_kw"] = int("outbreak" in title_norm or "upsurge" in title_norm)
+        row["title_topic_cat"] = title_topic
+        row["title_topic_code"] = TITLE_TOPIC_CODE[title_topic]
+
+        row["pub_year"] = pub_dt.year
+        row["pub_month"] = pub_dt.month
+        row["pub_weekday"] = pub_dt.weekday()
+        row["pub_quarter"] = (pub_dt.month - 1) // 3 + 1
+
+        start_dt = row.get("emergency_start_ts")
+        row["event_lead_days"] = (start_dt - pub_dt).days if start_dt is not None else None
+
+    if not rows:
+        return pl.DataFrame(schema=y_norm.schema)
+
+    out = pl.DataFrame(rows).sort("publication_ts")
+    title_freq = out.group_by("title_norm").len().rename({"len": "title_freq_count"})
+    out = out.join(title_freq, on="title_norm", how="left").with_columns(
+        (pl.col("title_freq_count") / pl.lit(out.height)).alias("title_freq_rate")
+    )
+    return out
 
 
 def build_ml_ready_frame(x_df: pl.DataFrame, y_df: pl.DataFrame) -> pl.DataFrame:
