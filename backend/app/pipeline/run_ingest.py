@@ -6,8 +6,6 @@ from datetime import UTC, datetime
 import httpx
 from sqlalchemy.orm import Session
 
-from app.ingest.errors import SourceIngestError
-from app.ingest.promed import ingest_promed_api
 from app.ingest.who import ingest_who_odata
 from app.models import PipelineRun
 from app.settings import Settings
@@ -44,8 +42,6 @@ def _determine_run_status(results: list[SourceRunResult]) -> str:
 
 
 def _classify_exception(exc: Exception) -> str:
-    if isinstance(exc, SourceIngestError):
-        return f"{exc.code}: {exc}"
     if isinstance(exc, httpx.HTTPStatusError):
         status_code = exc.response.status_code if exc.response is not None else None
         if status_code is not None and 400 <= status_code < 500:
@@ -77,51 +73,35 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
 
     source_results: list[SourceRunResult] = []
 
-    for source_name, fn in [
-        (
-            "promed",
-            lambda: ingest_promed_api(
-                db,
-                api_base_url=settings.promed_api_base_url,
-                api_key=settings.promed_api_key,
-                timeout_seconds=settings.ingest_http_timeout_seconds,
-                item_limit=settings.promed_limit,
-            ),
-        ),
-        (
-            "who_odata",
-            lambda: ingest_who_odata(
+    try:
+        with db.begin_nested():
+            stats = ingest_who_odata(
                 db,
                 url=settings.who_odata_url,
                 timeout_seconds=settings.ingest_http_timeout_seconds,
                 item_limit=settings.ingest_who_item_limit,
-            ),
-        ),
-    ]:
-        try:
-            with db.begin_nested():
-                stats = fn()
-            source_results.append(
-                SourceRunResult(
-                    source=source_name,
-                    records_in=stats.records_in,
-                    records_ok=stats.records_ok,
-                    records_failed=stats.records_failed,
-                    records_skipped=stats.records_skipped,
-                )
             )
-        except Exception as exc:
-            db.rollback()
-            source_results.append(
-                SourceRunResult(
-                    source=source_name,
-                    records_in=0,
-                    records_ok=0,
-                    records_failed=0,
-                    records_skipped=0,
-                    error=_classify_exception(exc),
-                )
+        source_results.append(
+            SourceRunResult(
+                source="who_odata",
+                records_in=stats.records_in,
+                records_ok=stats.records_ok,
+                records_failed=stats.records_failed,
+                records_skipped=stats.records_skipped,
             )
+        )
+    except Exception as exc:
+        db.rollback()
+        source_results.append(
+            SourceRunResult(
+                source="who_odata",
+                records_in=0,
+                records_ok=0,
+                records_failed=0,
+                records_skipped=0,
+                error=_classify_exception(exc),
+            )
+        )
 
     records_in = sum(item.records_in for item in source_results)
     records_ok = sum(item.records_ok for item in source_results)

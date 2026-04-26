@@ -36,19 +36,15 @@ def healthz() -> dict[str, str]:
 def readyz():
     db_ok, db_error = check_db_ready()
     azure_ok, azure_error = check_azure_ready()
-    settings = get_settings()
-    promed_ok = bool(settings.promed_api_key)
-    promed_error = None if promed_ok else "missing env vars: PROMED_API_KEY"
 
     checks = {
         "db": "ok" if db_ok else "error",
         "azure_openai": "ok" if azure_ok else "error",
-        "promed": "ok" if promed_ok else "error",
     }
-    details = [msg for msg in [db_error, azure_error, promed_error] if msg]
+    details = [msg for msg in [db_error, azure_error] if msg]
 
     payload = {
-        "ready": db_ok and azure_ok and promed_ok,
+        "ready": db_ok and azure_ok,
         "checks": checks,
         "details": details,
     }

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import os
 
 from fastapi.testclient import TestClient
 import pytest
@@ -29,10 +28,7 @@ def live_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.integration_live
-def test_live_ingest_run_hits_promed_and_who(live_client: TestClient):
-    if not os.getenv("PROMED_API_KEY"):
-        raise AssertionError("PROMED_API_KEY is required for integration_live tests")
-
+def test_live_ingest_run_hits_who(live_client: TestClient):
     resp = live_client.post("/ingest/run")
     assert resp.status_code == 200
 
@@ -42,12 +38,7 @@ def test_live_ingest_run_hits_promed_and_who(live_client: TestClient):
     assert isinstance(payload["sources"], list)
 
     by_source = {item["source"]: item for item in payload["sources"]}
-    assert "promed" in by_source
     assert "who_odata" in by_source
 
-    # Live integration check is contract-level: source entries should exist,
-    # and a successful source should not report an error.
-    if by_source["promed"]["error"] is None:
-        assert by_source["promed"]["records_in"] >= 0
     if by_source["who_odata"]["error"] is None:
         assert by_source["who_odata"]["records_in"] >= 0

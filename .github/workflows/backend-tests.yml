@@ -33,7 +33,5 @@ jobs:
           cd backend
           uv sync --frozen --dev
 
-      - name: Run unit/contract/local integration tests
+      - name: Run unit and local integration tests
         run: make test-ci
-        env:
-          PROMED_API_KEY: ${{ secrets.PROMED_API_KEY }}

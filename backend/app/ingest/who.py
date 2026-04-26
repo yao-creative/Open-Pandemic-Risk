@@ -56,6 +56,7 @@ def _get_or_create_source(db: Session, name: str, kind: str, base_url: str, poll
 
 def ingest_who_odata(db: Session, url: str, timeout_seconds: float, item_limit: int) -> IngestStats:
     stats = IngestStats()
+    seen_keys: set[tuple[str, str, datetime | None]] = set()
     source = _get_or_create_source(
         db,
         name="who_odata",
@@ -79,6 +80,10 @@ def ingest_who_odata(db: Session, url: str, timeout_seconds: float, item_limit: 
             or "UNK"
         )
         period_date = _parse_period_date(entry)
+        dedupe_key = (indicator_code, country_code, period_date)
+        if dedupe_key in seen_keys:
+            stats.records_skipped += 1
+            continue
         numeric_raw = entry.get("NumericValue")
         if numeric_raw is None:
             numeric_raw = entry.get("Value")
@@ -109,6 +114,7 @@ def ingest_who_odata(db: Session, url: str, timeout_seconds: float, item_limit: 
             dim_json=entry,
         )
         db.add(record)
+        seen_keys.add(dedupe_key)
         stats.records_ok += 1
 
     return stats
