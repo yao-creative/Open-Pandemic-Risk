@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     azure_openai_api_version: str = "2024-02-15-preview"
     azure_openai_deployment: str | None = None
 
+    who_odata_base_url: str = "https://ghoapi.azureedge.net/api"
     who_odata_url: str = "https://ghoapi.azureedge.net/api/WHOSIS_000001"
     ingest_http_timeout_seconds: float = 15.0
     ingest_who_item_limit: int = 200

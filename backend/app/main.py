@@ -12,9 +12,20 @@ from .agents.react_agent import AgentRunner
 from .azure_client import check_azure_ready
 from .db import check_db_ready, get_db_session, get_session_local, init_db
 from .models import EnrichmentReport, EnrichmentRun, PipelineRun, PipelineRunScore
-from .pipeline.run_ingest import run_ingestion
+from .pipeline.run_ingest import result_from_pipeline_run, run_ingestion
 from .pipeline.stages.score import score_pipeline_run
-from .schemas import EnrichmentRunListItem, EnrichmentRunListResponse, EnrichmentRunStatusResponse, IngestRunResponse, ScoreRunResponse, SnapshotEnrichRequest, SnapshotEnrichResponse, SourceRunResultSchema
+from .schemas import (
+    CodeRunResultSchema,
+    EnrichmentRunListItem,
+    EnrichmentRunListResponse,
+    EnrichmentRunStatusResponse,
+    IngestRunResponse,
+    PipelineRunDetailResponse,
+    ScoreRunResponse,
+    SnapshotEnrichRequest,
+    SnapshotEnrichResponse,
+    SourceRunResultSchema,
+)
 from .settings import get_settings
 
 app = FastAPI(title="biohack-api")
@@ -70,7 +81,38 @@ def ingest_run(db: Session = Depends(get_db_session)) -> IngestRunResponse:
         records_ok=result.records_ok,
         records_failed=result.records_failed,
         records_skipped=result.records_skipped,
+        profile_name=result.profile_name,
+        codes_total=result.codes_total,
+        codes_ok=result.codes_ok,
+        codes_failed=result.codes_failed,
         sources=[SourceRunResultSchema(**asdict(item)) for item in result.sources],
+        code_results=[CodeRunResultSchema(**asdict(item)) for item in result.code_results],
+    )
+
+
+@app.get("/runs/{pipeline_run_id}", response_model=PipelineRunDetailResponse)
+def get_run(pipeline_run_id: int, db: Session = Depends(get_db_session)) -> PipelineRunDetailResponse:
+    pipeline_run = db.get(PipelineRun, pipeline_run_id)
+    if pipeline_run is None:
+        raise HTTPException(status_code=404, detail="pipeline run not found")
+    result = result_from_pipeline_run(pipeline_run)
+    return PipelineRunDetailResponse(
+        pipeline_run_id=result.pipeline_run_id,
+        pipeline_name=pipeline_run.pipeline_name,
+        started_at=pipeline_run.started_at,
+        finished_at=pipeline_run.finished_at,
+        status=result.status,
+        records_in=result.records_in,
+        records_ok=result.records_ok,
+        records_failed=result.records_failed,
+        records_skipped=result.records_skipped,
+        error_summary=pipeline_run.error_summary,
+        profile_name=result.profile_name,
+        codes_total=result.codes_total,
+        codes_ok=result.codes_ok,
+        codes_failed=result.codes_failed,
+        sources=[SourceRunResultSchema(**asdict(item)) for item in result.sources],
+        code_results=[CodeRunResultSchema(**asdict(item)) for item in result.code_results],
     )
 
 

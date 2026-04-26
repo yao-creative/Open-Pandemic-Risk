@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import select
 
 from app import db as db_module
+from app.ingest.who_profiles import WhoProfileCode
 from app.models import IndicatorSnapshot
 from app import settings as settings_module
 
@@ -91,8 +92,16 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     db_module.SessionLocal = None
 
 
+@pytest.fixture
+def single_code_profile(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "app.pipeline.run_ingest.get_who_surveillance_profile",
+        lambda: ("who_surveillance_mvp_v1", [WhoProfileCode("WHOSIS_000001", "event_signals")]),
+    )
+
+
 @pytest.mark.integration_local
-def test_ingest_run_success(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+def test_ingest_run_success(client: TestClient, monkeypatch: pytest.MonkeyPatch, single_code_profile):
     def fake_get(url: str, timeout: float):
         if "ghoapi" in url:
             return _FakeResponse(json_data=WHO_JSON)
@@ -105,15 +114,21 @@ def test_ingest_run_success(client: TestClient, monkeypatch: pytest.MonkeyPatch)
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "ok"
-    assert data["records_in"] == 2
-    assert data["records_ok"] == 2
+    assert data["records_in"] == 1
+    assert data["records_ok"] == 1
     assert data["records_skipped"] == 0
-    assert any(source["source"] == "who_odata" for source in data["sources"])
-    assert any(source["source"] == "scoring" for source in data["sources"])
+    assert data["profile_name"] == "who_surveillance_mvp_v1"
+    assert data["codes_total"] == 1
+    assert data["codes_ok"] == 1
+    assert data["codes_failed"] == 0
+    assert len(data["code_results"]) == 1
+    assert data["code_results"][0]["code"] == "WHOSIS_000001"
+    assert len(data["sources"]) == 1
+    assert data["sources"][0]["source"] == "who_odata"
 
 
 @pytest.mark.integration_local
-def test_ingest_run_error_when_who_fails(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+def test_ingest_run_error_when_who_fails(client: TestClient, monkeypatch: pytest.MonkeyPatch, single_code_profile):
     def fake_get(url: str, timeout: float):
         return _FakeResponse(status_code=500)
 
@@ -126,11 +141,12 @@ def test_ingest_run_error_when_who_fails(client: TestClient, monkeypatch: pytest
     assert data["status"] == "error"
     assert data["records_in"] == 0
     assert data["records_ok"] == 0
-    assert any(source["source"] == "who_odata" and "http_5xx" in (source["error"] or "") for source in data["sources"])
+    assert data["codes_failed"] == 1
+    assert any("http_5xx" in (item["error"] or "") for item in data["code_results"])
 
 
 @pytest.mark.integration_local
-def test_who_numeric_zero_is_preserved(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+def test_who_numeric_zero_is_preserved(client: TestClient, monkeypatch: pytest.MonkeyPatch, single_code_profile):
     def fake_get(url: str, timeout: float):
         if "ghoapi" in url:
             return _FakeResponse(json_data=WHO_JSON_NUMERIC_ZERO)
@@ -147,7 +163,7 @@ def test_who_numeric_zero_is_preserved(client: TestClient, monkeypatch: pytest.M
 
 
 @pytest.mark.integration_local
-def test_who_duplicates_are_skipped(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+def test_who_duplicates_are_skipped(client: TestClient, monkeypatch: pytest.MonkeyPatch, single_code_profile):
     def fake_get(url: str, timeout: float):
         if "ghoapi" in url:
             return _FakeResponse(json_data=WHO_JSON_DUP_CONTENT)
@@ -164,11 +180,34 @@ def test_who_duplicates_are_skipped(client: TestClient, monkeypatch: pytest.Monk
     second_data = second.json()
 
     assert first_data["status"] == "ok"
-    assert first_data["records_in"] == 3
-    assert first_data["records_ok"] == 2
+    assert first_data["records_in"] == 2
+    assert first_data["records_ok"] == 1
     assert first_data["records_skipped"] == 1
 
     assert second_data["status"] == "ok"
-    assert second_data["records_in"] == 3
-    assert second_data["records_ok"] == 1
+    assert second_data["records_in"] == 2
+    assert second_data["records_ok"] == 0
     assert second_data["records_skipped"] == 2
+
+
+@pytest.mark.integration_local
+def test_get_run_returns_ingest_diagnostics(client: TestClient, monkeypatch: pytest.MonkeyPatch, single_code_profile):
+    def fake_get(url: str, timeout: float):
+        if "ghoapi" in url:
+            return _FakeResponse(json_data=WHO_JSON)
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr("httpx.get", fake_get)
+
+    ingest_resp = client.post("/ingest/run")
+    assert ingest_resp.status_code == 200
+    run_id = ingest_resp.json()["pipeline_run_id"]
+
+    run_resp = client.get(f"/runs/{run_id}")
+    assert run_resp.status_code == 200
+    payload = run_resp.json()
+    assert payload["pipeline_run_id"] == run_id
+    assert payload["pipeline_name"] == "who_surveillance_sync_v1"
+    assert payload["profile_name"] == "who_surveillance_mvp_v1"
+    assert payload["codes_total"] == 1
+    assert len(payload["code_results"]) == 1

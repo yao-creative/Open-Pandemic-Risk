@@ -1,20 +1,32 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy.orm import Session
 
 from app.ingest.who import ingest_who_odata
+from app.ingest.who_profiles import get_who_surveillance_profile
 from app.models import PipelineRun
-from app.pipeline.stages import enrich_with_exa, score_pipeline_run
 from app.settings import Settings
 
 
 @dataclass
 class SourceRunResult:
     source: str
+    records_in: int
+    records_ok: int
+    records_failed: int
+    records_skipped: int
+    error: str | None = None
+
+
+@dataclass
+class CodeRunResult:
+    code: str
+    category: str
+    status: str
     records_in: int
     records_ok: int
     records_failed: int
@@ -30,6 +42,11 @@ class IngestRunResult:
     records_ok: int
     records_failed: int
     records_skipped: int
+    profile_name: str
+    codes_total: int
+    codes_ok: int
+    codes_failed: int
+    code_results: list[CodeRunResult]
     sources: list[SourceRunResult]
 
 
@@ -57,113 +74,149 @@ def _classify_exception(exc: Exception) -> str:
     return f"internal_error: {exc}"
 
 
+def _build_source_result_from_codes(code_results: list[CodeRunResult]) -> SourceRunResult:
+    return SourceRunResult(
+        source="who_odata",
+        records_in=sum(item.records_in for item in code_results),
+        records_ok=sum(item.records_ok for item in code_results),
+        records_failed=sum(item.records_failed for item in code_results),
+        records_skipped=sum(item.records_skipped for item in code_results),
+        error=None,
+    )
+
+
+def _serialize_details(
+    profile_name: str,
+    code_results: list[CodeRunResult],
+    source_results: list[SourceRunResult],
+) -> dict:
+    codes_failed = len([item for item in code_results if item.error])
+    return {
+        "profile_name": profile_name,
+        "codes_total": len(code_results),
+        "codes_ok": len(code_results) - codes_failed,
+        "codes_failed": codes_failed,
+        "code_results": [asdict(item) for item in code_results],
+        "sources": [asdict(item) for item in source_results],
+    }
+
+
+def result_from_pipeline_run(pipeline_run: PipelineRun) -> IngestRunResult:
+    details = pipeline_run.details_json or {}
+    profile_name = str(details.get("profile_name") or "who_surveillance_mvp_v1")
+    code_results = [CodeRunResult(**item) for item in details.get("code_results", []) if isinstance(item, dict)]
+    source_results = [SourceRunResult(**item) for item in details.get("sources", []) if isinstance(item, dict)]
+    if not source_results:
+        source_results = [
+            SourceRunResult(
+                source="who_odata",
+                records_in=pipeline_run.records_in,
+                records_ok=pipeline_run.records_ok,
+                records_failed=pipeline_run.records_failed,
+                records_skipped=pipeline_run.records_skipped,
+                error=pipeline_run.error_summary,
+            )
+        ]
+
+    codes_total = int(details.get("codes_total", len(code_results)))
+    codes_failed = int(details.get("codes_failed", len([item for item in code_results if item.error])))
+    codes_ok = int(details.get("codes_ok", max(codes_total - codes_failed, 0)))
+
+    return IngestRunResult(
+        pipeline_run_id=pipeline_run.id,
+        status=pipeline_run.status,
+        records_in=pipeline_run.records_in,
+        records_ok=pipeline_run.records_ok,
+        records_failed=pipeline_run.records_failed,
+        records_skipped=pipeline_run.records_skipped,
+        profile_name=profile_name,
+        codes_total=codes_total,
+        codes_ok=codes_ok,
+        codes_failed=codes_failed,
+        code_results=code_results,
+        sources=source_results,
+    )
+
+
 def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
     started = datetime.now(tz=UTC)
+    profile_name, profile_codes = get_who_surveillance_profile()
     pipeline_run = PipelineRun(
-        pipeline_name="phase1_sync_ingestion",
+        pipeline_name="who_surveillance_sync_v1",
         started_at=started,
         finished_at=None,
         status="running",
         records_in=0,
         records_ok=0,
         records_failed=0,
+        records_skipped=0,
         error_summary=None,
+        details_json=None,
     )
     db.add(pipeline_run)
     db.flush()
 
-    source_results: list[SourceRunResult] = []
+    base = settings.who_odata_base_url.rstrip("/")
+    code_results: list[CodeRunResult] = []
 
-    try:
-        with db.begin_nested():
-            stats = ingest_who_odata(
-                db,
-                url=settings.who_odata_url,
-                timeout_seconds=settings.ingest_http_timeout_seconds,
-                item_limit=settings.ingest_who_item_limit,
-            )
-        source_results.append(
-            SourceRunResult(
-                source="who_odata",
-                records_in=stats.records_in,
-                records_ok=stats.records_ok,
-                records_failed=stats.records_failed,
-                records_skipped=stats.records_skipped,
-            )
-        )
-    except Exception as exc:
-        db.rollback()
-        source_results.append(
-            SourceRunResult(
-                source="who_odata",
-                records_in=0,
-                records_ok=0,
-                records_failed=0,
-                records_skipped=0,
-                error=_classify_exception(exc),
-            )
-        )
-
-    exa_result = enrich_with_exa(db, settings=settings, pipeline_run_id=pipeline_run.id)
-    if exa_result.status != "skipped":
-        source_results.append(
-            SourceRunResult(
-                source="exa_enrichment",
-                records_in=settings.exa_num_results,
-                records_ok=exa_result.citations_saved,
-                records_failed=0 if exa_result.error is None else settings.exa_num_results,
-                records_skipped=0,
-                error=exa_result.error,
-            )
-        )
-
-    who_result = next((result for result in source_results if result.source == "who_odata"), None)
-    if who_result is not None and who_result.error is None:
+    for item in profile_codes:
+        url = f"{base}/{item.code}"
         try:
-            score_result = score_pipeline_run(db, pipeline_run_id=pipeline_run.id)
-            source_results.append(
-                SourceRunResult(
-                    source="scoring",
-                    records_in=score_result.records_in,
-                    records_ok=score_result.records_ok,
-                    records_failed=score_result.records_failed,
-                    records_skipped=0,
+            with db.begin_nested():
+                stats = ingest_who_odata(
+                    db,
+                    url=url,
+                    timeout_seconds=settings.ingest_http_timeout_seconds,
+                    item_limit=settings.ingest_who_item_limit,
+                    profile_name=profile_name,
+                    profile_category=item.category,
+                )
+            code_results.append(
+                CodeRunResult(
+                    code=item.code,
+                    category=item.category,
+                    status="ok",
+                    records_in=stats.records_in,
+                    records_ok=stats.records_ok,
+                    records_failed=stats.records_failed,
+                    records_skipped=stats.records_skipped,
                     error=None,
                 )
             )
         except Exception as exc:
-            source_results.append(
-                SourceRunResult(
-                    source="scoring",
+            # begin_nested() already rolled back this code's savepoint; keep outer transaction active
+            code_results.append(
+                CodeRunResult(
+                    code=item.code,
+                    category=item.category,
+                    status="error",
                     records_in=0,
                     records_ok=0,
-                    records_failed=1,
+                    records_failed=0,
                     records_skipped=0,
-                    error=f"internal_error: {exc}",
+                    error=_classify_exception(exc),
                 )
             )
 
-    records_in = sum(item.records_in for item in source_results)
-    records_ok = sum(item.records_ok for item in source_results)
-    records_failed = sum(item.records_failed for item in source_results)
-    records_skipped = sum(item.records_skipped for item in source_results)
-    errors = [item.error for item in source_results if item.error]
+    source_results = [_build_source_result_from_codes(code_results)]
+    failed_codes = len([item for item in code_results if item.error])
 
-    pipeline_run.records_in = records_in
-    pipeline_run.records_ok = records_ok
-    pipeline_run.records_failed = records_failed
+    pipeline_run.records_in = sum(item.records_in for item in code_results)
+    pipeline_run.records_ok = sum(item.records_ok for item in code_results)
+    pipeline_run.records_failed = sum(item.records_failed for item in code_results)
+    pipeline_run.records_skipped = sum(item.records_skipped for item in code_results)
     pipeline_run.finished_at = datetime.now(tz=UTC)
-    pipeline_run.status = _determine_run_status(source_results)
-    pipeline_run.error_summary = " | ".join(errors) if errors else None
+    if failed_codes == 0:
+        pipeline_run.status = "ok"
+    elif failed_codes == len(code_results):
+        pipeline_run.status = "error"
+    else:
+        pipeline_run.status = "partial"
+
+    error_messages = [item.error for item in code_results if item.error]
+    pipeline_run.error_summary = " | ".join(error_messages) if error_messages else None
+    pipeline_run.details_json = _serialize_details(profile_name, code_results, source_results)
 
     db.commit()
 
-    return IngestRunResult(
-        pipeline_run_id=pipeline_run.id,
-        status=pipeline_run.status,
-        records_in=records_in,
-        records_ok=records_ok,
-        records_failed=records_failed,
-        records_skipped=records_skipped,
-        sources=source_results,
-    )
+    return result_from_pipeline_run(pipeline_run)

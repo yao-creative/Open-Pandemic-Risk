@@ -6,13 +6,20 @@ from .agent import (
     SnapshotEnrichRequest,
     SnapshotEnrichResponse,
 )
-from .ingest import IngestRunResponse, SourceRunResultSchema
+from .ingest import (
+    CodeRunResultSchema,
+    IngestRunResponse,
+    PipelineRunDetailResponse,
+    SourceRunResultSchema,
+)
 
 __all__ = [
+    "CodeRunResultSchema",
+    "IngestRunResponse",
+    "PipelineRunDetailResponse",
     "EnrichmentRunStatusResponse",
     "EnrichmentRunListItem",
     "EnrichmentRunListResponse",
-    "IngestRunResponse",
     "ScoreRunResponse",
     "SnapshotEnrichRequest",
     "SnapshotEnrichResponse",
