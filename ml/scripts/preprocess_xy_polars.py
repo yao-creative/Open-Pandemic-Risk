@@ -76,7 +76,7 @@ def _build_x_features(x_df: pl.DataFrame) -> pl.DataFrame:
         )
 
     x_norm = x_df.with_columns(
-        pl.col("period_date").cast(pl.Datetime, strict=False),
+        pl.col("period_date").cast(pl.Datetime, strict=False).dt.replace_time_zone("UTC"),
         pl.col("value").cast(pl.Float64, strict=False),
     )
 
@@ -118,13 +118,16 @@ def _build_y_labels(y_df: pl.DataFrame) -> pl.DataFrame:
         row["y_event_start_t24h"] = has_future_start_within(pub_dt, start_times, window_hours=24)
         row["y_event_start_t72h"] = has_future_start_within(pub_dt, start_times, window_hours=72)
 
-        # Additional feature transformations for small-data modeling.
         row["title_norm"] = title_norm
         row["title_char_len"] = len(title_norm)
         row["title_word_count"] = title_word_count
         row["title_has_outbreak_kw"] = int("outbreak" in title_norm or "upsurge" in title_norm)
         row["title_topic_cat"] = title_topic
         row["title_topic_code"] = TITLE_TOPIC_CODE[title_topic]
+
+        # USA field-worker oriented binary relevance cues.
+        us_terms = ("usa", "u.s.", "united states", "cdc", "hhs", "state health")
+        row["title_has_us_kw"] = int(any(term in title_norm for term in us_terms))
 
         row["pub_year"] = pub_dt.year
         row["pub_month"] = pub_dt.month
@@ -133,6 +136,11 @@ def _build_y_labels(y_df: pl.DataFrame) -> pl.DataFrame:
 
         start_dt = row.get("emergency_start_ts")
         row["event_lead_days"] = (start_dt - pub_dt).days if start_dt is not None else None
+
+        # Simple intervention priority score for demo triage.
+        row["intervention_priority_score"] = int(
+            row["y_grade3_plus"] * 3 + row["title_has_outbreak_kw"] * 2 + row["title_has_us_kw"]
+        )
 
     if not rows:
         return pl.DataFrame(schema=y_norm.schema)
@@ -167,20 +175,52 @@ def build_ml_ready_frame(x_df: pl.DataFrame, y_df: pl.DataFrame) -> pl.DataFrame
     )
 
 
+def build_ml_ready_slim_frame(full_df: pl.DataFrame) -> pl.DataFrame:
+    # Pruned demo frame: 5 simple features + target + triage field.
+    return full_df.select(
+        [
+            "record_id",
+            "publication_ts",
+            "title",
+            "f_title_topic_code",
+            "f_title_has_outbreak_kw",
+            "f_title_word_count",
+            "f_pub_quarter",
+            "f_title_has_us_kw",
+            "target_t72h",
+            "intervention_priority_score",
+        ]
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Preprocess X and Y candidate datasets into ML-ready frame.")
     parser.add_argument("--x", type=Path, default=Path("ml/data/processed/x_candidates.parquet"))
     parser.add_argument("--y", type=Path, default=Path("ml/data/processed/y_candidates.parquet"))
     parser.add_argument("--out", type=Path, default=Path("ml/data/processed/ml_ready.parquet"))
+    parser.add_argument("--out-slim", type=Path, default=Path("ml/data/processed/ml_ready_slim_us.parquet"))
     args = parser.parse_args()
 
     x_df = pl.read_parquet(args.x)
     y_df = pl.read_parquet(args.y)
-    out_df = build_ml_ready_frame(x_df, y_df)
+    out_df = build_ml_ready_frame(x_df, y_df).with_columns(
+        pl.col("title_topic_code").alias("f_title_topic_code"),
+        pl.col("title_has_outbreak_kw").alias("f_title_has_outbreak_kw"),
+        pl.col("title_word_count").clip(1, 20).alias("f_title_word_count"),
+        pl.col("pub_quarter").alias("f_pub_quarter"),
+        pl.col("title_has_us_kw").alias("f_title_has_us_kw"),
+        pl.col("y_event_start_t72h").alias("target_t72h"),
+    )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     out_df.write_parquet(args.out)
+
+    slim_df = build_ml_ready_slim_frame(out_df)
+    args.out_slim.parent.mkdir(parents=True, exist_ok=True)
+    slim_df.write_parquet(args.out_slim)
+
     print(f"wrote {out_df.height} rows to {args.out}")
+    print(f"wrote {slim_df.height} rows to {args.out_slim}")
 
 
 if __name__ == "__main__":
