@@ -565,3 +565,164 @@ sequenceDiagram
 - Avoid `flush()` after every `add()`; it increases round trips with little value.
 - Treat flush errors (unique/FK/check violations) as expected transactional failures and return deterministic API errors.
 - For async orchestration, create `pipeline_run`, flush once to get run id, enqueue tasks, then commit once.
+
+# Edit 6 WHO-Only Hard-Coded Integration (Pre-Implementation Baseline vs Target) 2026-04-26 10:07 Branch: who-surveillance-mvp-v1
+
+## Old ERD (Current State) (Mermaid)
+
+```mermaid
+erDiagram
+    SOURCE_REGISTRY ||--o{ INDICATOR_SNAPSHOT : has
+    PIPELINE_RUN {
+        int id PK
+        string pipeline_name
+        datetime started_at
+        datetime finished_at
+        string status
+        int records_in
+        int records_ok
+        int records_failed
+        string error_summary
+    }
+    SOURCE_REGISTRY {
+        int id PK
+        string name UK
+        string kind
+        string base_url
+        int poll_interval_minutes
+        bool enabled
+    }
+    INDICATOR_SNAPSHOT {
+        int id PK
+        int source_id FK
+        string indicator_code
+        string country_code
+        datetime period_date
+        float value
+        string unit
+        json dim_json
+    }
+```
+
+## Old Flow (Current State) (Mermaid)
+
+```mermaid
+flowchart TD
+    A[POST /ingest/run] --> B[run_ingestion]
+    B --> C[Create pipeline_run running]
+    C --> D[GET WHO endpoint from who_odata_url]
+    D --> E[ingest_who_odata]
+    E --> F[Upsert source_registry]
+    E --> G[Insert indicator_snapshot rows]
+    G --> H[Aggregate counters]
+    H --> I[Finalize pipeline_run status]
+    I --> J[Return ingest summary]
+```
+
+## Old Sequence (Current State) (Mermaid)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant API as /ingest/run
+    participant Orchestrator as run_ingestion
+    participant WHO as WHO OData (single endpoint)
+    participant DB as App DB
+
+    API->>Orchestrator: run_ingestion(db, settings)
+    Orchestrator->>DB: insert pipeline_run(status=running)
+    Orchestrator->>WHO: GET settings.who_odata_url
+    WHO-->>Orchestrator: payload.value[]
+    Orchestrator->>DB: get/create source_registry(who_odata)
+    loop each row
+        Orchestrator->>DB: dedupe + insert indicator_snapshot
+    end
+    Orchestrator->>DB: update pipeline_run totals + status
+    Orchestrator-->>API: IngestRunResponse
+```
+
+## New ERD (Target for This Implementation) (Mermaid)
+
+```mermaid
+erDiagram
+    SOURCE_REGISTRY ||--o{ INDICATOR_SNAPSHOT : has
+    PIPELINE_RUN {
+        int id PK
+        string pipeline_name
+        datetime started_at
+        datetime finished_at
+        string status
+        int records_in
+        int records_ok
+        int records_failed
+        string error_summary
+    }
+    SOURCE_REGISTRY {
+        int id PK
+        string name UK
+        string kind
+        string base_url
+        int poll_interval_minutes
+        bool enabled
+    }
+    INDICATOR_SNAPSHOT {
+        int id PK
+        int source_id FK
+        string indicator_code
+        string country_code
+        datetime period_date
+        float value
+        string unit
+        json dim_json
+    }
+```
+
+Notes:
+- No new tables in this step.
+- New WHO profile/category metadata is stored in `indicator_snapshot.dim_json`.
+
+## New Flow (Target for This Implementation) (Mermaid)
+
+```mermaid
+flowchart TD
+    A[POST /ingest/run] --> B[run_ingestion with fixed profile who_surveillance_mvp_v1]
+    B --> C[Create pipeline_run running]
+    C --> D[Loop hard-coded indicator codes]
+    D --> E[GET WHO /api/{IndicatorCode}]
+    E --> F[ingest_who_odata code-scoped ingest]
+    F --> G[Insert indicator_snapshot with profile and category tags in dim_json]
+    G --> H[Collect per-code status and counters]
+    H --> I[Finalize pipeline_run aggregate status: ok/partial/error]
+    I --> J[Return run summary plus code diagnostics]
+    J --> K[GET /runs/{id} for operator readback]
+```
+
+## New Sequence (Target for This Implementation) (Mermaid)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant API as /ingest/run
+    participant Orchestrator as run_ingestion (fixed profile)
+    participant WHO as WHO OData (/api/{IndicatorCode})
+    participant DB as App DB
+    participant RunsAPI as /runs/{id}
+
+    API->>Orchestrator: run_ingestion(db, settings)
+    Orchestrator->>DB: insert pipeline_run(status=running, profile=who_surveillance_mvp_v1 logical context)
+    loop each hard-coded indicator code
+        Orchestrator->>WHO: GET /api/{IndicatorCode}
+        alt code success
+            WHO-->>Orchestrator: payload rows
+            Orchestrator->>DB: dedupe + insert indicator_snapshot rows
+            Orchestrator->>Orchestrator: mark code_result ok
+        else code failure
+            WHO-->>Orchestrator: http/network/timeout error
+            Orchestrator->>Orchestrator: mark code_result error
+        end
+    end
+    Orchestrator->>DB: update pipeline_run totals + final status
+    Orchestrator-->>API: run summary + code diagnostics
+    RunsAPI->>DB: fetch pipeline_run + diagnostics
+    RunsAPI-->>RunsAPI: return operator-readable run details
+```
