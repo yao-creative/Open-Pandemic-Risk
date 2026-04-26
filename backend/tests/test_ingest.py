@@ -105,11 +105,11 @@ def test_ingest_run_success(client: TestClient, monkeypatch: pytest.MonkeyPatch)
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "ok"
-    assert data["records_in"] == 1
-    assert data["records_ok"] == 1
+    assert data["records_in"] == 2
+    assert data["records_ok"] == 2
     assert data["records_skipped"] == 0
-    assert len(data["sources"]) == 1
-    assert data["sources"][0]["source"] == "who_odata"
+    assert any(source["source"] == "who_odata" for source in data["sources"])
+    assert any(source["source"] == "scoring" for source in data["sources"])
 
 
 @pytest.mark.integration_local
@@ -164,11 +164,11 @@ def test_who_duplicates_are_skipped(client: TestClient, monkeypatch: pytest.Monk
     second_data = second.json()
 
     assert first_data["status"] == "ok"
-    assert first_data["records_in"] == 2
-    assert first_data["records_ok"] == 1
+    assert first_data["records_in"] == 3
+    assert first_data["records_ok"] == 2
     assert first_data["records_skipped"] == 1
 
     assert second_data["status"] == "ok"
-    assert second_data["records_in"] == 2
-    assert second_data["records_ok"] == 0
+    assert second_data["records_in"] == 3
+    assert second_data["records_ok"] == 1
     assert second_data["records_skipped"] == 2
