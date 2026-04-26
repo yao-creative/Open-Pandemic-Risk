@@ -122,4 +122,6 @@ class PipelineRun(Base):
     records_in: Mapped[int] = mapped_column(Integer, default=0)
     records_ok: Mapped[int] = mapped_column(Integer, default=0)
     records_failed: Mapped[int] = mapped_column(Integer, default=0)
+    records_skipped: Mapped[int] = mapped_column(Integer, default=0)
     error_summary: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    details_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)

@@ -54,7 +54,15 @@ def _get_or_create_source(db: Session, name: str, kind: str, base_url: str, poll
     return source
 
 
-def ingest_who_odata(db: Session, url: str, timeout_seconds: float, item_limit: int) -> IngestStats:
+def ingest_who_odata(
+    db: Session,
+    url: str,
+    timeout_seconds: float,
+    item_limit: int,
+    *,
+    profile_name: str | None = None,
+    profile_category: str | None = None,
+) -> IngestStats:
     stats = IngestStats()
     seen_keys: set[tuple[str, str, datetime | None]] = set()
     source = _get_or_create_source(
@@ -69,10 +77,11 @@ def ingest_who_odata(db: Session, url: str, timeout_seconds: float, item_limit: 
     response.raise_for_status()
     payload = response.json()
     values = payload.get("value", [])
+    indicator_code_hint = url.rstrip("/").rsplit("/", 1)[-1]
 
     for entry in values[:item_limit]:
         stats.records_in += 1
-        indicator_code = str(entry.get("IndicatorCode") or entry.get("Indicator") or "unknown")
+        indicator_code = str(entry.get("IndicatorCode") or entry.get("Indicator") or indicator_code_hint or "unknown")
         country_code = str(
             entry.get("SpatialDim")
             or entry.get("Country")
@@ -104,6 +113,12 @@ def ingest_who_odata(db: Session, url: str, timeout_seconds: float, item_limit: 
             stats.records_skipped += 1
             continue
 
+        tagged_entry = dict(entry)
+        if profile_name is not None:
+            tagged_entry["_profile_name"] = profile_name
+        if profile_category is not None:
+            tagged_entry["_profile_category"] = profile_category
+
         record = IndicatorSnapshot(
             source_id=source.id,
             indicator_code=indicator_code,
@@ -111,7 +126,7 @@ def ingest_who_odata(db: Session, url: str, timeout_seconds: float, item_limit: 
             period_date=period_date,
             value=numeric_value,
             unit=unit,
-            dim_json=entry,
+            dim_json=tagged_entry,
         )
         db.add(record)
         seen_keys.add(dedupe_key)
