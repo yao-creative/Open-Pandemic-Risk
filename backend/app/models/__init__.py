@@ -1,5 +1,6 @@
 from .base import Base
 from .entities import (
+    AgentToolAudit,
     Alert,
     CanonicalEvent,
     EventObservation,
@@ -11,6 +12,7 @@ from .entities import (
 )
 
 __all__ = [
+    "AgentToolAudit",
     "Alert",
     "Base",
     "CanonicalEvent",

@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     who_odata_url: str = "https://ghoapi.azureedge.net/api/WHOSIS_000001"
     ingest_http_timeout_seconds: float = 15.0
     ingest_who_item_limit: int = 200
+    exa_api_url: str = "https://api.exa.ai/search"
+    exa_api_key: str | None = None
+    agent_row_limit: int = 100
+    agent_query_timeout_seconds: float = 5.0
+    agent_allowed_tables_csv: str = "pipeline_run,indicator_snapshot,source_registry"
 
 
 @lru_cache

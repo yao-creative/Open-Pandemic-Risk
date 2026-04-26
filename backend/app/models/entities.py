@@ -123,3 +123,15 @@ class PipelineRun(Base):
     records_ok: Mapped[int] = mapped_column(Integer, default=0)
     records_failed: Mapped[int] = mapped_column(Integer, default=0)
     error_summary: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+
+
+class AgentToolAudit(Base):
+    __tablename__ = "agent_tool_audit"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tool_name: Mapped[str] = mapped_column(String(64), index=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    duration_ms: Mapped[int] = mapped_column(Integer)
+    success: Mapped[bool] = mapped_column(Boolean)
+    args_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error_summary: Mapped[str | None] = mapped_column(String(1024), nullable=True)

@@ -5,10 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
+from .agents import execute_agent_tool
 from .azure_client import check_azure_ready
 from .db import check_db_ready, get_db_session, init_db
 from .pipeline.run_ingest import run_ingestion
-from .schemas import IngestRunResponse, SourceRunResultSchema
+from .schemas import AgentQueryRequest, AgentQueryResponse, IngestRunResponse, SourceRunResultSchema
 from .settings import get_settings
 
 app = FastAPI(title="biohack-api")
@@ -66,3 +67,11 @@ def ingest_run(db: Session = Depends(get_db_session)) -> IngestRunResponse:
         records_skipped=result.records_skipped,
         sources=[SourceRunResultSchema(**asdict(item)) for item in result.sources],
     )
+
+
+@app.post("/agent/query", response_model=AgentQueryResponse)
+def agent_query(payload: AgentQueryRequest, db: Session = Depends(get_db_session)) -> AgentQueryResponse:
+    settings = get_settings()
+    result = execute_agent_tool(db, settings=settings, tool=payload.tool, args=payload.args)
+    db.commit()
+    return AgentQueryResponse(tool=payload.tool, result=result)
