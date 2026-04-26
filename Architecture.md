@@ -856,3 +856,100 @@ sequenceDiagram
     RunsAPI->>DB: fetch pipeline_run + diagnostics
     RunsAPI-->>RunsAPI: return operator-readable run details
 ```
+
+# Edit 7 Modular Pipeline Runner Hard Cutover 2026-04-26 14:58 Branch: feature/pipeline-hard-cutover-debug
+
+## Canonical Pipeline Run Sequence (Mermaid)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as API Client
+    participant API as backend/app/api/routes/pipeline.py
+    participant Runner as backend/app/pipeline/runner/pipeline_runner.py
+    participant Ingest as backend/app/pipeline/stages/ingest_snapshot.py
+    participant Enrich as backend/app/pipeline/stages/enrich_snapshot_agent.py
+    participant Score as backend/app/pipeline/stages/score_snapshot.py
+    participant DB as backend/app/models/entities.py
+
+    Client->>API: POST /pipeline/run {idempotency_key?}
+    API->>DB: create/reuse pipeline_run(pipeline_full_v1)
+    API-->>Client: pipeline_run_id + status + stage_order
+    API->>Runner: background task run(pipeline_run_id)
+
+    Runner->>DB: event(pipeline_started), run=running
+
+    Runner->>Ingest: validate + run
+    Ingest->>DB: run_ingestion() writes snapshot rows tagged _snapshot_ref_id
+    Runner->>DB: pipeline_stage_run(ingest_snapshot=completed)
+    Runner->>DB: persist artifacts(snapshot_ref_id)
+
+    Runner->>Enrich: validate + run
+    Enrich->>DB: create enrichment_run + execute AgentRunner
+    Runner->>DB: pipeline_stage_run(enrich_snapshot_agent=completed)
+    Runner->>DB: persist artifacts(enrichment_run_id, enrichment_pipeline_run_id)
+
+    Runner->>Score: validate + run
+    Score->>DB: read IndicatorSnapshot scoped by _snapshot_ref_id
+    Score->>DB: insert pipeline_run_score(pipeline_run_id=enrichment_pipeline_run_id)
+    Runner->>DB: pipeline_stage_run(score_snapshot=completed)
+    Runner->>DB: persist artifacts(risk_value, risk_band)
+
+    Runner->>DB: event(pipeline_completed), run=completed
+    Client->>API: GET /pipeline/runs/{id}
+    API-->>Client: run + stage_runs + artifacts
+```
+
+## Debug Stage Endpoint Sequence (Mermaid)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Dev as Debug Operator
+    participant DebugAPI as backend/app/api/routes/debug_stages.py
+    participant Registry as backend/app/pipeline/registry.py
+    participant Stage as backend/app/pipeline/stages/*
+    participant DB as backend/app/models/entities.py
+
+    Dev->>DebugAPI: GET /debug/stages
+    DebugAPI->>Registry: list_stages()
+    Registry-->>DebugAPI: stage names + required_inputs
+    DebugAPI-->>Dev: stage catalog
+
+    Dev->>DebugAPI: POST /debug/stages/{stage}/validate
+    DebugAPI->>Registry: get(stage)
+    DebugAPI->>Stage: validate(StageContext)
+    Stage-->>DebugAPI: valid/errors
+    DebugAPI-->>Dev: validation result
+
+    Dev->>DebugAPI: POST /debug/stages/{stage}/run
+    DebugAPI->>Stage: run(StageContext)
+    Stage->>DB: execute stage writes
+    Stage-->>DebugAPI: StageResult(status, metrics, artifacts)
+    DebugAPI-->>Dev: debug stage run response
+```
+
+## Failure Path Sequence (Mermaid)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Runner as PipelineRunner
+    participant Stage as Active Stage
+    participant DB as App DB
+
+    Runner->>Stage: run(context)
+    Stage-->>Runner: StageResult(status=error,error=...)
+    Runner->>DB: pipeline_stage_run(status=failed,error_summary)
+    Runner->>DB: append event(stage_failed)
+    Runner->>DB: pipeline_run(status=failed,error_summary,finished_at)
+    Runner->>DB: append event(pipeline_failed)
+```
+
+## Implementation Notes
+
+- Canonical runtime path is now `/pipeline/*`; legacy `/ingest/run` and `/agent/enrich` orchestration path is removed.
+- Stage contract is explicit via `StageContext`, `StageValidationResult`, and `StageResult`.
+- Pipeline observability is first-class with `pipeline_stage_run` and `pipeline_run_event` tables.
+- Scoring stage is snapshot-scoped using `_snapshot_ref_id` tag populated during ingest.
+- Dedicated live e2e workflow added at `.github/workflows/e2e-live.yml` and local target added as `make test-e2e-live`.
