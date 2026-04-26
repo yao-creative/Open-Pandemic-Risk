@@ -4,6 +4,17 @@ services:
   backend:
     build:
       context: ./backend
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./backend/app
+          target: /app/app
+        - action: rebuild
+          path: ./backend/pyproject.toml
+        - action: rebuild
+          path: ./backend/uv.lock
+        - action: rebuild
+          path: ./backend/Dockerfile
     env_file:
       - .env
     ports:

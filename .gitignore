@@ -22,3 +22,5 @@ frontend/dist/
 
 # Playwright MCP artifacts
 .playwright-mcp/
+
+.agents/.worktrees

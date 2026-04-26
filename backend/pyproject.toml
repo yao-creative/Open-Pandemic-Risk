@@ -27,3 +27,10 @@ packages = ["app"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "--strict-markers"
+markers = [
+  "unit: Pure logic tests with no network or DB I/O",
+  "contract: Adapter-level tests with mocked external HTTP contracts",
+  "integration_local: Route + DB tests with mocked external APIs",
+  "integration_live: Real external API integration tests",
+]
