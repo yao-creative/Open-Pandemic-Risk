@@ -1,0 +1,41 @@
+name: E2E Live
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - develop
+
+jobs:
+  e2e-live:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Copy env for live e2e
+        run: |
+          cp .env.example .env
+          {
+            echo "EXA_API_KEY=${{ secrets.EXA_API_KEY }}"
+            echo "AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT }}"
+            echo "AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY }}"
+            echo "AZURE_OPENAI_API_VERSION=${{ secrets.AZURE_OPENAI_API_VERSION }}"
+            echo "AZURE_OPENAI_DEPLOYMENT=${{ secrets.AZURE_OPENAI_DEPLOYMENT }}"
+          } >> .env
+
+      - name: Sync backend deps
+        run: |
+          cd backend
+          uv sync --frozen --dev
+
+      - name: Run live e2e tests
+        run: make test-e2e-live

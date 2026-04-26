@@ -1,9 +1,17 @@
-from .enrich_with_exa import EnrichWithExaResult, enrich_with_exa
+from .contracts import PipelineStage, StageContext, StageResult, StageValidationResult
+from .enrich_snapshot_agent import EnrichSnapshotAgentStage
+from .ingest_snapshot import IngestSnapshotStage
 from .score import ScoreStageResult, score_pipeline_run
+from .score_snapshot import ScoreSnapshotStage
 
 __all__ = [
-    "EnrichWithExaResult",
+    "EnrichSnapshotAgentStage",
+    "IngestSnapshotStage",
+    "PipelineStage",
     "ScoreStageResult",
-    "enrich_with_exa",
+    "ScoreSnapshotStage",
+    "StageContext",
+    "StageResult",
+    "StageValidationResult",
     "score_pipeline_run",
 ]

@@ -23,7 +23,6 @@ class Settings(BaseSettings):
     exa_num_results: int = 5
     agent_row_limit: int = 100
     agent_query_timeout_seconds: float = 5.0
-    agent_allowed_tables_csv: str = "pipeline_run,indicator_snapshot,source_registry"
     agent_max_steps: int = 12
     agent_max_targets: int = 5
     agent_max_exa_calls: int = 5

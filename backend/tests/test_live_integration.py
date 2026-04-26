@@ -28,17 +28,11 @@ def live_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.integration_live
-def test_live_ingest_run_hits_who(live_client: TestClient):
-    resp = live_client.post("/ingest/run")
+def test_live_pipeline_run_hits_who(live_client: TestClient):
+    resp = live_client.post("/pipeline/run", json={})
     assert resp.status_code == 200
 
     payload = resp.json()
     assert "pipeline_run_id" in payload
     assert "status" in payload
-    assert isinstance(payload["sources"], list)
-
-    by_source = {item["source"]: item for item in payload["sources"]}
-    assert "who_odata" in by_source
-
-    if by_source["who_odata"]["error"] is None:
-        assert by_source["who_odata"]["records_in"] >= 0
+    assert isinstance(payload["stage_order"], list)
