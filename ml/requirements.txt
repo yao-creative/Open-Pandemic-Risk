@@ -1,1 +1,2 @@
 polars==1.30.0
+ydata-profiling==4.16.1

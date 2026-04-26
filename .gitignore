@@ -28,3 +28,7 @@ ml/data/**/*.json
 
 # Local ML venv
 .venv-ml/
+
+# ML generated reports
+ml/data/**/*.html
+ml/notebooks/*.ran.ipynb
