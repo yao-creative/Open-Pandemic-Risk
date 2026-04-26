@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db_session
-from app.models import PipelineRun
 from app.pipeline.registry import StageRegistry
 from app.pipeline.stages.contracts import StageContext
 from app.schemas import (
@@ -25,8 +22,8 @@ def _build_context(db: Session, stage_name: str, payload: DebugStageRunRequest) 
     artifacts: dict[str, int] = {}
     if payload.snapshot_ref_id is not None:
         artifacts["snapshot_ref_id"] = payload.snapshot_ref_id
-    if payload.enrichment_pipeline_run_id is not None:
-        artifacts["enrichment_pipeline_run_id"] = payload.enrichment_pipeline_run_id
+    if payload.enrichment_run_id is not None:
+        artifacts["enrichment_run_id"] = payload.enrichment_run_id
 
     params = payload.model_dump(exclude_none=True)
     return StageContext(
@@ -77,24 +74,6 @@ def run_stage(
     validation = stage.validate(context)
     if not validation.valid:
         raise HTTPException(status_code=400, detail="; ".join(validation.errors))
-
-    if stage_name == "score_snapshot" and payload.enrichment_pipeline_run_id is None:
-        debug_run = PipelineRun(
-            pipeline_name="debug_score_stage_v1",
-            started_at=datetime.now(tz=UTC),
-            finished_at=None,
-            status="running",
-            records_in=0,
-            records_ok=0,
-            records_failed=0,
-            records_skipped=0,
-            error_summary=None,
-            details_json=None,
-        )
-        db.add(debug_run)
-        db.flush()
-        context.artifacts["enrichment_pipeline_run_id"] = debug_run.id
-        db.commit()
 
     result = stage.run(context)
     return DebugStageRunResponse(

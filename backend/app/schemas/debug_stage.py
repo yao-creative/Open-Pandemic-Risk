@@ -7,7 +7,8 @@ from pydantic import BaseModel
 
 class DebugStageRunRequest(BaseModel):
     snapshot_ref_id: int | None = None
-    enrichment_pipeline_run_id: int | None = None
+    enrichment_run_id: int | None = None
+    ml_snapshot_id: int | None = None
     max_steps: int | None = None
     max_targets: int | None = None
     max_exa_calls: int | None = None

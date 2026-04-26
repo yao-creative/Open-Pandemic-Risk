@@ -3,10 +3,109 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>biohack-frontend</title>
+    <title>Pipeline Dashboard</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --text: #102235;
+        --muted: #506072;
+        --accent: #0f7b6c;
+        --accent-dark: #0a5a4f;
+        --border: #dbe2eb;
+        --critical: #c43d23;
+        --ok: #1f7a40;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
+        background: radial-gradient(circle at top, #e5f3ef 0%, var(--bg) 35%);
+        color: var(--text);
+      }
+
+      main {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 2rem 1rem 3rem;
+      }
+
+      h1 {
+        margin: 0 0 0.4rem;
+        font-size: 1.9rem;
+      }
+
+      .subtitle {
+        margin: 0 0 1.3rem;
+        color: var(--muted);
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1rem;
+        margin-top: 1rem;
+      }
+
+      button {
+        border: 0;
+        border-radius: 10px;
+        padding: 0.75rem 1rem;
+        background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: wait;
+      }
+
+      .status-line {
+        font-weight: 600;
+      }
+
+      .error {
+        color: var(--critical);
+      }
+
+      .ok {
+        color: var(--ok);
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        padding: 0.5rem 0.35rem;
+        vertical-align: top;
+        font-size: 0.93rem;
+      }
+
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+    </style>
   </head>
   <body>
-    <pre id="status">checking backend readiness...</pre>
+    <main>
+      <h1>One-Click Pipeline Dashboard</h1>
+      <p class="subtitle">Run the full pipeline and inspect one consolidated report for the current run.</p>
+      <button id="run-pipeline">Run Pipeline</button>
+      <section id="status-panel" class="panel"></section>
+      <section id="report-panel" class="panel"></section>
+    </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

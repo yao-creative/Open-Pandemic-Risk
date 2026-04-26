@@ -12,7 +12,7 @@ from app.pipeline.stages.contracts import StageContext, StageResult
 from app.settings import Settings
 
 
-STAGE_ORDER = ["ingest_snapshot", "enrich_snapshot_agent", "score_snapshot"]
+STAGE_ORDER = ["ingest_snapshot", "enrich_snapshot_agent", "recommend_response_agent"]
 
 
 class PipelineRunner:
