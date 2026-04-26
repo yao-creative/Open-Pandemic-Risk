@@ -21,3 +21,10 @@ frontend/dist/
 .playwright-mcp/
 
 .agents/.worktrees/
+
+# ML experiment outputs
+ml/data/**/*.parquet
+ml/data/**/*.json
+
+# Local ML venv
+.venv-ml/

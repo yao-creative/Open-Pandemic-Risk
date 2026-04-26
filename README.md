@@ -122,3 +122,13 @@ Aggregate data to provide exact information, a fresh alert feed, and response de
 - Hospitals: preparedness
 - Enterprises: risk
 - Researchers: analysis
+
+## ML Experiment (Ingestion-Only)
+
+A manual first-pass dataset builder now exists under `ml/`:
+
+- X: pull WHO fixed-profile rows from `indicator_snapshot`
+- Y: pull WHO DON labels, with fallback to WHO Emergencies when DON is empty
+- preprocess with Polars into `ml/data/ml_ready.parquet`
+
+See `ml/README.md` for command sequence and notebook usage.
