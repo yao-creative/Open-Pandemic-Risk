@@ -135,3 +135,27 @@ class AgentToolAudit(Base):
     success: Mapped[bool] = mapped_column(Boolean)
     args_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error_summary: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+
+
+class ExaCitation(Base):
+    __tablename__ = "exa_citation"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pipeline_run_id: Mapped[int] = mapped_column(ForeignKey("pipeline_run.id"), index=True)
+    url: Mapped[str] = mapped_column(String(1024))
+    title: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    snippet: Mapped[str | None] = mapped_column(String, nullable=True)
+    query: Mapped[str] = mapped_column(String(512))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PipelineRunScore(Base):
+    __tablename__ = "pipeline_run_score"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pipeline_run_id: Mapped[int] = mapped_column(ForeignKey("pipeline_run.id"), index=True)
+    scored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    risk_value: Mapped[float] = mapped_column(Float)
+    risk_band: Mapped[str] = mapped_column(String(16))
+    factors_json: Mapped[dict] = mapped_column(JSON)
+    model_version: Mapped[str] = mapped_column(String(32), default="deterministic-v1")

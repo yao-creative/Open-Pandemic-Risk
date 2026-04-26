@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.ingest.who import ingest_who_odata
 from app.models import PipelineRun
+from app.pipeline.stages import enrich_with_exa, score_pipeline_run
 from app.settings import Settings
 
 
@@ -102,6 +103,45 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
                 error=_classify_exception(exc),
             )
         )
+
+    exa_result = enrich_with_exa(db, settings=settings, pipeline_run_id=pipeline_run.id)
+    if exa_result.status != "skipped":
+        source_results.append(
+            SourceRunResult(
+                source="exa_enrichment",
+                records_in=settings.exa_num_results,
+                records_ok=exa_result.citations_saved,
+                records_failed=0 if exa_result.error is None else settings.exa_num_results,
+                records_skipped=0,
+                error=exa_result.error,
+            )
+        )
+
+    who_result = next((result for result in source_results if result.source == "who_odata"), None)
+    if who_result is not None and who_result.error is None:
+        try:
+            score_result = score_pipeline_run(db, pipeline_run_id=pipeline_run.id)
+            source_results.append(
+                SourceRunResult(
+                    source="scoring",
+                    records_in=score_result.records_in,
+                    records_ok=score_result.records_ok,
+                    records_failed=score_result.records_failed,
+                    records_skipped=0,
+                    error=None,
+                )
+            )
+        except Exception as exc:
+            source_results.append(
+                SourceRunResult(
+                    source="scoring",
+                    records_in=0,
+                    records_ok=0,
+                    records_failed=1,
+                    records_skipped=0,
+                    error=f"internal_error: {exc}",
+                )
+            )
 
     records_in = sum(item.records_in for item in source_results)
     records_ok = sum(item.records_ok for item in source_results)

@@ -30,17 +30,17 @@ class ExaClient:
         )
         response.raise_for_status()
         payload = response.json()
-        rows = payload.get("results") or []
-        result: list[ExaSearchResult] = []
-        for row in rows:
-            url = row.get("url")
+        results = payload.get("results") or []
+        parsed: list[ExaSearchResult] = []
+        for item in results:
+            url = item.get("url")
             if not url:
                 continue
-            result.append(
+            parsed.append(
                 ExaSearchResult(
                     url=str(url),
-                    title=str(row.get("title")) if row.get("title") else None,
-                    snippet=str(row.get("text")) if row.get("text") else None,
+                    title=str(item.get("title")) if item.get("title") else None,
+                    snippet=str(item.get("text")) if item.get("text") else None,
                 )
             )
-        return result
+        return parsed
