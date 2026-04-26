@@ -184,7 +184,7 @@ def run_ingestion(db: Session, settings: Settings) -> IngestRunResult:
                 )
             )
         except Exception as exc:
-            db.rollback()
+            # begin_nested() already rolled back this code's savepoint; keep outer transaction active
             code_results.append(
                 CodeRunResult(
                     code=item.code,
