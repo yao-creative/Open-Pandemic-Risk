@@ -142,3 +142,37 @@ def test_promed_contract_pagination(db_session, monkeypatch: pytest.MonkeyPatch)
     assert stats.records_ok == 2
     assert count == 2
     assert len(calls) == 2
+
+
+@pytest.mark.contract
+def test_promed_contract_duplicates_are_skipped(db_session, monkeypatch: pytest.MonkeyPatch):
+    payload = {
+        "success": True,
+        "data": {
+            "alerts": [
+                {"alertId": 1, "subject_line": "A", "url": "https://x/1", "body": "same"},
+                {"alertId": 2, "subject_line": "A", "url": "https://x/1", "body": "same"},
+            ],
+            "nextCursor": None,
+        },
+    }
+
+    def fake_post(url: str, headers: dict, json: dict, timeout: float):
+        return _FakeResponse(json_data=payload)
+
+    monkeypatch.setattr("httpx.post", fake_post)
+
+    stats = ingest_promed_api(
+        db_session,
+        api_base_url="https://www.promedmail.org/api/v1",
+        api_key="test-key",
+        timeout_seconds=5.0,
+        item_limit=10,
+    )
+
+    db_session.flush()
+    count = db_session.execute(select(func.count(RawIngestEvent.id))).scalar_one()
+    assert stats.records_in == 2
+    assert stats.records_ok == 1
+    assert stats.records_skipped == 1
+    assert count == 1

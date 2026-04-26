@@ -68,6 +68,29 @@ PROMED_ALERTS_DUP_CONTENT = {
     },
 }
 
+PROMED_ALERTS_DUP_EXTERNAL_ID = {
+    "success": True,
+    "data": {
+        "alerts": [
+            {
+                "alertId": 1001,
+                "subject_line": "Outbreak A",
+                "url": "https://www.promedmail.org/post/1001",
+                "issueDate": "2026-04-25T09:00:00Z",
+                "body": "Suspected outbreak details",
+            },
+            {
+                "alertId": 1001,
+                "subject_line": "Outbreak A follow-up",
+                "url": "https://www.promedmail.org/post/1001-update",
+                "issueDate": "2026-04-25T10:00:00Z",
+                "body": "Updated details",
+            },
+        ],
+        "nextCursor": None,
+    },
+}
+
 WHO_JSON = {
     "value": [
         {
@@ -184,7 +207,7 @@ def test_who_numeric_zero_is_preserved(client: TestClient, monkeypatch: pytest.M
 
 
 @pytest.mark.integration_local
-def test_promed_dedupes_by_content_hash(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+def test_promed_duplicates_by_content_hash_are_skipped(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     def fake_post(url: str, headers: dict, json: dict, timeout: float):
         return _FakeResponse(json_data=PROMED_ALERTS_DUP_CONTENT)
 
@@ -207,3 +230,55 @@ def test_promed_dedupes_by_content_hash(client: TestClient, monkeypatch: pytest.
 
     with db_module.SessionLocal() as db:
         assert db.execute(select(RawIngestEvent.id)).all()
+
+
+@pytest.mark.integration_local
+def test_promed_duplicates_by_external_id_are_skipped(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    def fake_post(url: str, headers: dict, json: dict, timeout: float):
+        return _FakeResponse(json_data=PROMED_ALERTS_DUP_EXTERNAL_ID)
+
+    def fake_get(url: str, timeout: float):
+        if "ghoapi" in url:
+            return _FakeResponse(json_data=WHO_JSON)
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr("httpx.post", fake_post)
+    monkeypatch.setattr("httpx.get", fake_get)
+
+    resp = client.post("/ingest/run")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert data["records_in"] == 3
+    assert data["records_ok"] == 2
+    assert data["records_skipped"] == 1
+
+
+@pytest.mark.integration_local
+def test_ingest_run_is_idempotent_for_duplicates(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    def fake_post(url: str, headers: dict, json: dict, timeout: float):
+        return _FakeResponse(json_data=PROMED_ALERTS_JSON)
+
+    def fake_get(url: str, timeout: float):
+        if "ghoapi" in url:
+            return _FakeResponse(json_data=WHO_JSON)
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr("httpx.post", fake_post)
+    monkeypatch.setattr("httpx.get", fake_get)
+
+    first = client.post("/ingest/run")
+    second = client.post("/ingest/run")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    first_data = first.json()
+    second_data = second.json()
+    assert first_data["status"] == "ok"
+    assert first_data["records_ok"] == 2
+    assert first_data["records_skipped"] == 0
+    assert second_data["status"] == "ok"
+    assert second_data["records_ok"] == 0
+    assert second_data["records_skipped"] == 2

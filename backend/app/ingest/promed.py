@@ -6,7 +6,8 @@ import hashlib
 import json
 
 import httpx
-from sqlalchemy import or_, select
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.ingest.errors import SourceIngestError
@@ -112,8 +113,6 @@ def ingest_promed_api(
 
     now = datetime.now(tz=UTC)
     stats = IngestStats()
-    seen_external_ids: set[str] = set()
-    seen_content_hashes: set[str] = set()
 
     source = _get_or_create_source(
         db,
@@ -176,24 +175,6 @@ def ingest_promed_api(
             raw_json = alert
             content_hash = hashlib.sha256(f"{title_text}\n{content_text}\n{url_text}".encode("utf-8")).hexdigest()
 
-            if external_id in seen_external_ids or content_hash in seen_content_hashes:
-                stats.records_skipped += 1
-                continue
-
-            existing = db.execute(
-                select(RawIngestEvent).where(
-                    RawIngestEvent.source_id == source.id,
-                    or_(
-                        RawIngestEvent.external_id == external_id,
-                        RawIngestEvent.content_hash == content_hash,
-                    ),
-                )
-            ).scalar_one_or_none()
-
-            if existing:
-                stats.records_skipped += 1
-                continue
-
             record = RawIngestEvent(
                 source_id=source.id,
                 external_id=external_id,
@@ -205,9 +186,14 @@ def ingest_promed_api(
                 raw_json=raw_json,
                 content_hash=content_hash,
             )
-            db.add(record)
-            seen_external_ids.add(external_id)
-            seen_content_hashes.add(content_hash)
+            try:
+                with db.begin_nested():
+                    db.add(record)
+                    db.flush()
+            except IntegrityError:
+                stats.records_skipped += 1
+                continue
+
             stats.records_ok += 1
             remaining -= 1
 
