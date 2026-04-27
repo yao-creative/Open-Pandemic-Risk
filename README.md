@@ -1,5 +1,11 @@
 # AIxBioHack 2026: Pandemic Risk Monitoring: Alert, Enrich, Evaluate, Respond
+
 April 26, 2026
+
+## Status:
+
+Currently I'm open to collaborate with domain experts.
+
 ## Abstract
 
 *This project is an attempt to build a pandemic risk monitoring platform for public health experts in policy or fieldwork with four stages: Alert, connecting verified health professional signals, Enrich, a scalable multiturn agent with search gathering external context, Evaluate, a risk assessment model (doubleml) to score risk and confidence of the alert and enriched data, and Recommend, a grounded AI agent recommending actionable response steps to public-health teams for faster response from raw signals to actions recommendations based on explainable models policy makers are familar with. The project ended up scaffolded and is deployable with the pipeline runnable, however, model experiments were not rigorously run nor verified. It serves as an entrypoint to continue transparent open development of explainable, live, grounded, and actionable alerting and response of pandemic risk where speed and transparency matter.*
@@ -34,7 +40,7 @@ The canonical runtime flow is:
 
 ## Dashboard Preview
 
-![Image #1](assets/image.png)
+Image #1
 
 ### Pipeline Orchestration
 
@@ -254,3 +260,4 @@ Other targets:
 - Connect enrichment NLP data to double lasso/ double ml risk evaluation
 - Semantic IDs or Generative recommendation systems fine tuned for decision making / policy align ment
 - Intergrate other verifiable sources such as HealthMap and ProMED into Alert stage data.
+
