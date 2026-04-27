@@ -4,7 +4,7 @@ April 26, 2026
 
 ## Status:
 
-Currently I'm open to collaborate with domain experts and developers.
+Currently I'm open to collaborate with domain experts and developers. Email me at yytanwork@gmail.com
 
 ## Abstract
 
